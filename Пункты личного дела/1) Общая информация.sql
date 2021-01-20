@@ -68,7 +68,3 @@ FROM WM_PERSONAL_CARD personalCard --Личное дело гражданина.
     LEFT JOIN SPR_SUBJFED               subjectFederationBirth  ON  subjectFederationBirth.OUID = placeBirth.A_SUBFED           --Справочник субъектов федерации.
     LEFT JOIN SPR_FEDERATIONBOROUGHT    federationBoroughBirth  ON  federationBoroughBirth.OUID = placeBirth.A_FEDBOROUGH       --Справочник районов субъектов федерации.
     LEFT JOIN SPR_TOWN                  townBirth               ON  townBirth.OUID              = placeBirth.A_TOWN             --Справочник населенных пунктов.
-
-
-    
-    
