@@ -37,7 +37,7 @@ CREATE TABLE #TABLE_AGE (
 
 
 --Выборка в таблицу возрастов.
-INSERT #TABLE_AGE(PERSONOUID, BIRTHDATE, AGE, NEXT_BIRTHDATE)
+INSERT #TABLE_AGE (PERSONOUID, AGE, NEXT_BIRTHDATE)
 SELECT
     personalCard.OUID                       AS PERSONOUID,
     DATEDIFF(YEAR, personalCard.BIRTHDATE, @dateForAge) -                       --Вычисление разницы между годами.									
@@ -59,5 +59,8 @@ FROM WM_PERSONAL_CARD personalCard --Личное дело.
 ------------------------------------------------------------------------------------------------------------------------------
 
 
-
+--Проверка.
 SELECT * FROM #TABLE_AGE
+
+
+------------------------------------------------------------------------------------------------------------------------------
