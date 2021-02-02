@@ -1,35 +1,205 @@
-DECLARE @pet int
-DECLARE @pcpet int
-DECLARE @serv int
-DECLARE @phones VARCHAR(100)
-DECLARE @petType int
-declare @d1 date
-declare @d2 date
-DECLARE @reg int
-DECLARE @lg int
-DECLARE @docs VARCHAR(100)
-DECLARE @docstype VARCHAR(100)
-DECLARE @part float
-declare @dreg date
-DECLARE @fls int
-/*Льготополучатель*/
-DECLARE @pcpetl int
-/*Адрес получателей льготы*/
-DECLARE @adrrl int
-/*Дата начала действия основания*/
-declare @dnosn date
-declare @s1 date
-declare @s2 date
-DECLARE @minpet int
-declare @minpetdate date
+--------------------------------------------------------------------------------------------
 
-set @s1 = convert(date, dateadd("day", 1-DAY(#beginDate#), #beginDate#))
-set @s2 = convert(date, dateadd("day", 1-DAY(#endDate#), #endDate#))
+
+--Объявление переменных.
+DECLARE @pet        INT         --Идентификатор заявления.
+DECLARE @pcpet      INT         --Личное дело заявителя.
+DECLARE @petType    INT         --Тип заявления.
+DECLARE @dreg       DATE        --Дата регистрации заявления.
+DECLARE @serv       INT         --Назначение.
+DECLARE @phones     VARCHAR(100)--Телефоны.
+DECLARE @reg        INT         --Количество лиц.
+DECLARE @lg         INT         --Количество членов семьи, на которых распространяется льгота.
+DECLARE @docs       VARCHAR(100)--Наименование документа о владении.
+DECLARE @docstype   VARCHAR(100)--Код документа о владении.
+DECLARE @d1         DATE
+DECLARE @d2         DATE
+DECLARE @part       FLOAT       --Доля собственности.
+DECLARE @fls        INT         --@fls = 0 - наниматель, @fls = 1 - собственник.
+DECLARE @pcpetl     INT         --Льготополучатель.
+DECLARE @adrrl      INT         --Адрес жилого помещения.
+DECLARE @dnosn      DATE        --Дата начала действия основания.
+DECLARE @s1         DATE
+DECLARE @s2         DATE
+DECLARE @minpet     INT
+DECLARE @minpetdate DATE
+
+
+--------------------------------------------------------------------------------------------
+
+--Входные параметры отчета.
+SET @pet = #objectID#                                                       --Заявление.
+SET @s1 = CONVERT(DATE, DATEADD("day", 1 - DAY(#beginDate#), #beginDate#))  --Начало отчетной недели. 
+SET @s2 = CONVERT(DATE, DATEADD("day", 1 - DAY(#endDate#), #endDate#))      --Конец отчетной недели.  
+
+
+--------------------------------------------------------------------------------------------
+
+
+--Информация о заявлении.
+SELECT 
+    @pcpet = appeal.A_PERSONCARD, 
+    @petType = petition.A_PETITION_TYPE, 
+    @dreg = CONVERT(DATE, appeal.A_DATE_REG), 
+    @pcpetl = petition.A_MSPHOLDER
+FROM WM_PETITION petition --Заявления.
+----Обращение гражданина.		
+    INNER JOIN WM_APPEAL_NEW appeal     
+        ON appeal.OUID = petition.OUID --Связка с заявлением.
+            AND appeal.A_STATUS = 10    --Статус в БД "Действует".
+WHERE petition.OUID = @pet --Заявление отчета.
+
+--Если заявление на назначение, то берем привязанное назначение к заявлению.
+IF @petType = 1 BEGIN
+    SELECT 
+        @serv = servServ.OUID
+    FROM ESRN_SERV_SERV servServ        --Назначение.
+    WHERE servServ.A_STATUS = 10        --Статус в БД "Действует".
+        AND servServ.A_SERV = 310       --"Компенсационная выплата в связи с расходами по оплате жилых помещений, коммунальных и других видов услуг" для "Члены семей погибших (умерших) военнослужащих"
+        AND servServ.A_REQUEST = @pet   --Назначение по заявлению отчета. 
+END
+--Если на возобновление или перерасчет, то берем назначение на перерасчета/продления/возобновления выплат.
+ELSE BEGIN
+    SELECT 
+        @serv = A_EXTEND_SERV_BASE --Назначение для перерасчета/продления/возобновления выплат.
+    FROM WM_PETITION
+    WHERE OUID = @pet
+END
+
+--Если заявление на назначение, то берем в качестве даты начала первый день месяца даты регистрации заявления.
+IF @petType = 1 BEGIN
+   SET @d1 = DATEADD("day", 1 - DAY(@dreg), @dreg) 
+END
+--Если заявление на возобновление или перерасчет, то берем в качестве даты начала следующий день после окончания действия назначения.
+ELSE BEGIN
+    SELECT 
+        @d1 = DATEADD(DAY, 1, CONVERT(DATE, period.A_LASTDATE))
+    FROM SPR_SERV_PERIOD period --Период предоставления МСП.
+    ----Подзапрос для выбора последего периода.
+        INNER JOIN (
+            SELECT
+                MAX(STARTDATE) as sd
+		    FROM SPR_SERV_PERIOD    --Период предоставления МСП.
+		    WHERE A_SERV = @serv    --Связка с назначением.
+		        AND  A_STATUS = 10  --Статус в БД "Действует". 
+	    ) md 
+	        ON md.sd = period.STARTDATE
+    WHERE period.A_SERV = @serv     --Связка с назначением.
+        AND period.A_STATUS = 10    --Статус в БД "Действует". 
+END
+
+--В качестве даты окончания берем +6 месяцев - 1 день от даты начала.
+SET @d2 = DATEADD(DAY, -1, DATEADD(MONTH, 6, @d1))
+
+
+--------------------------------------------------------------------------------------------
+
+
+--Телефоны.
+SET @phones = '' --Подготовка для цикла.
+SELECT 
+    @phones = @phones + ' ' + phone.A_NUMBER --Запись всех телефонов заявителя.
+FROM WM_PCPHONE phone 
+WHERE phone.A_PERSCARD = @pcpet	--Заявитель отчета.
+    AND phone.A_STATUS = 10     --Статус в БД "Действует".
+
+--------------------------------------------------------------------------------------------
+
+
+--Зарегистрированные.
+SELECT 
+    @reg = actDocuments.A_AMOUNT_PERSON, 
+    @adrrl = actDocuments.A_REGFLAT, 
+    @lg = actDocuments.A_AMOUNT_LGOT
+FROM SPR_LINK_APPEAL_DOC appeal_doc --Связка обращения с документами.
+----Действующие документы.
+    INNER JOIN WM_ACTDOCUMENTS actDocuments         
+        ON actDocuments.OUID = appeal_doc.TOID      --Связка с обращением.
+            AND actDocuments.A_STATUS = 10          --Статус в БД "Действует".
+            AND actDocuments.DOCUMENTSTYPE = 2091   --Документ, содержащий сведения о лицах, зарегистрированных совместно с заявителем по месту его постоянного жительства.
+----Подзапрос для взятия последнего документа.
+    INNER JOIN (
+        SELECT 
+            MAX(doc.ISSUEEXTENSIONSDATE) AS ISSUEEXTENSIONSDATE
+        FROM SPR_LINK_APPEAL_DOC ld
+        ----Действующие документ.
+            INNER JOIN WM_ACTDOCUMENTS doc 
+                ON doc.OUID  = ld.TOID              --Связка с обращением.
+                    AND doc.A_STATUS = 10           --Статус в БД "Действует".
+                    AND doc.DOCUMENTSTYPE = 2091    --Документ, содержащий сведения о лицах, зарегистрированных совместно с заявителем по месту его постоянного жительства.
+        WHERE ld.FROMID = @pet                      --Обращение отчета.
+    ) md 
+        ON md.ISSUEEXTENSIONSDATE = actDocuments.ISSUEEXTENSIONSDATE --Документ с последней датой.
+WHERE appeal_doc.FROMID = @pet --Обращение отчета.
+
+--Если нет количества лиц, то устанваливается количество членов семьи, на которых распространяется льгота.
+IF @reg IS NULL 
+    SET @reg = @lg
+
+
+--------------------------------------------------------------------------------------------
+
+
+--Документ о владении (c 01-08-2020 не обязателен).
+SELECT 
+    @docs = typeDoc.a_name, 
+    @docstype = typeDoc.A_CODE
+FROM SPR_LINK_APPEAL_DOC appeal_doc --Связка обращения с документами.
+----Действующие документы.
+    INNER JOIN WM_ACTDOCUMENTS actDocuments   
+        ON actDocuments.OUID = appeal_doc.TOID      --Связка с обращением.
+            AND actDocuments.A_STATUS = 10          --Статус в БД "Действует".
+            AND actDocuments.PERSONOUID = @pcpetl   --Связка с льготодержателем.
+----Вид документа.
+    INNER JOIN PPR_DOC typeDoc
+        ON typeDoc.A_ID = actDocuments.DOCUMENTSTYPE    --Cвязка с документом.
+            and typeDoc.A_PARENT = 2090                 --Документ из разряда подтверждающих правовые основания владения и пользования заявителем жилым помещением.
+            and typeDoc.A_STATUS = 10                   --Статус типа документа в БД "Действует".
+----Подзапрос для взятия последнего документа.
+    INNER JOIN (
+        SELECT 
+            MAX(doc.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE
+        FROM SPR_LINK_APPEAL_DOC ld
+        ----Действующие документы.
+            INNER JOIN WM_ACTDOCUMENTS doc 
+                ON doc.OUID = ld.TOID              --Связка с обращением.
+                    AND doc.A_STATUS = 10          --Статус в БД "Действует".
+                    AND doc.PERSONOUID = @pcpetl   --Связка с льготодержателем.
+        ----Вид документа.
+            INNER JOIN PPR_DOC pprDoc1 
+                ON pprDoc1.A_ID = doc.DOCUMENTSTYPE --Cвязка с документом.
+                    AND pprDoc1.A_PARENT = 2090     --Документ из разряда подтверждающих правовые основания владения и пользования заявителем жилым помещением.
+                    AND pprDoc1.A_STATUS = 10       --Статус типа документа в БД "Действует".
+        WHERE ld.FROMID = @pet                      --Обращение отчета.
+    ) md 
+        ON md.ISSUEEXTENSIONSDATE = actDocuments.ISSUEEXTENSIONSDATE --Документ с последней датой.
+WHERE appeal_doc.FROMID = @pet --Обращение отчета.
+
+--Есть документ о владении и он относится к "Договор социального найма жилого помещения" или "Договор найма жилого помещения" или "Договор найма специализированного жилого помещения".
+IF (@docs IS NOT NULL AND @docstype IN ('naim', 'specNaim', 'contractSocialHire'))
+BEGIN
+    SET @fls = 0    --Наниматель.
+    SET @part = 1   --Доля 1.
+END
+ELSE
+BEGIN
+    SET @fls = 1 --Собственник.
+    --Доли нет, или она равна 0.
+    IF isnull(@part, 0) = 0 
+        SET @part = 1 --Доля 1.
+END
+
+
+--------------------------------------------------------------------------------------------
+
+
+--Удаление временных таблиц.
+IF OBJECT_ID('tempdb..#tmpspr') IS NOT NULL BEGIN DROP TABLE #tmpspr    END --Справка о праве.
+IF OBJECT_ID('tempdb..#tmps')   IS NOT NULL BEGIN DROP TABLE #tmps      END --Доля собственности.
 
 
 IF OBJECT_ID('tempdb..#tmpl') IS NOT NULL BEGIN DROP TABLE #tmpl END
-IF OBJECT_ID('tempdb..#tmps') IS NOT NULL BEGIN DROP TABLE #tmps END
-IF OBJECT_ID('tempdb..#tmpspr') IS NOT NULL BEGIN DROP TABLE #tmpspr END
+
 IF OBJECT_ID('tempdb..#tmpr') IS NOT NULL BEGIN DROP TABLE #tmpr END
 IF OBJECT_ID('tempdb..#tmppet') IS NOT NULL BEGIN DROP TABLE #tmppet END
 IF OBJECT_ID('tempdb..#tmppet1') IS NOT NULL BEGIN DROP TABLE #tmppet1 END
@@ -42,164 +212,121 @@ IF OBJECT_ID('tempdb..#tmppetpart') IS NOT NULL BEGIN DROP TABLE #tmppetpart END
 IF OBJECT_ID('tempdb..#tmppetdoc') IS NOT NULL BEGIN DROP TABLE #tmppetdoc END
 IF OBJECT_ID('tempdb..#tmpf1') IS NOT NULL BEGIN DROP TABLE #tmpf1 END
 
---5822584
---6362998
 
---5848915
---6346814
-
-set @pet = #objectID# 
-
-SET @phones = ''
-
-/*Заявитель, тип заявления, дата регистрации заявления, получатель льготы*/
-select @pcpet = app.A_PERSONCARD, @petType = pet.A_PETITION_TYPE, @dreg = CONVERT(date, app.A_DATE_REG), @pcpetl = pet.A_MSPHOLDER
-from WM_PETITION pet
-	join WM_APPEAL_NEW app on app.OUID = pet.OUID and app.A_STATUS = 10
-where pet.OUID = @pet
-
-/*Адрес регистрации заявителя*/
-/*
-select @adrr = A_REGFLAT
-from WM_PERSONAL_CARD
-where OUID = @pcpet
-*/
-
-/*Назначение*/
-if @petType = 1
-  begin
-   select @serv = ess.OUID
-   from ESRN_SERV_SERV ess
-	    join WM_PETITION pet on ess.A_REQUEST = @pet
-   where ess.A_STATUS = 10 and ess.A_SERV = 310
-  end
- else
-  begin
-   select @serv = A_EXTEND_SERV_BASE
-   from WM_PETITION
-   where OUID = @pet
-  end
-  
-
--- Телефоны
-SELECT @phones = @phones + ' ' + phone.A_NUMBER
-FROM WM_PCPHONE phone 
-WHERE phone.A_PERSCARD = @pcpet	AND phone.A_STATUS = 10
-
-/*Зарегистрированные*/
-select @reg = doc.A_AMOUNT_PERSON, @adrrl = doc.A_REGFLAT, @lg = doc.A_AMOUNT_LGOT
-from SPR_LINK_APPEAL_DOC ld 
-	join WM_ACTDOCUMENTS doc on ld.TOID = doc.OUID and doc.A_STATUS = 10 and doc.DOCUMENTSTYPE = 2091
-	join 
-	(select MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE
-	from SPR_LINK_APPEAL_DOC ld1 
-		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.DOCUMENTSTYPE = 2091
-	where ld1.FROMID = @pet) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE
-where ld.FROMID = @pet
-
-/*Льготники*/
-/*
-select @lg = COUNT(*)
-from SPR_LINK_APPEAL_DOC ld 
-	join WM_ACTDOCUMENTS doc on ld.TOID = doc.OUID and doc.A_STATUS = 10 and doc.DOCUMENTSTYPE = 2091
-	join 
-	(select MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE
-	from SPR_LINK_APPEAL_DOC ld1 
-		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.DOCUMENTSTYPE = 2091
-	where ld1.FROMID = @pet) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE
-	join LINK_ACTDOC_PC ldpc on ldpc.A_FROMID = doc.OUID
-where ld.FROMID = @pet
-*/
-
-if @reg is null set @reg = @lg
-
-/*Документ о владении*/
-select @docs = pprDoc.a_name, @docstype = pprDoc.A_CODE
-from SPR_LINK_APPEAL_DOC ld 
-	join WM_ACTDOCUMENTS doc on ld.TOID = doc.OUID and doc.A_STATUS = 10 and doc.PERSONOUID = @pcpetl
-	join PPR_DOC pprDoc ON pprDoc.A_ID = doc.DOCUMENTSTYPE and pprDoc.A_PARENT = 2090 and pprDoc.A_STATUS = 10
-	join 
-	(select MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE
-	from SPR_LINK_APPEAL_DOC ld1 
-		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.PERSONOUID = @pcpetl
-		join PPR_DOC pprDoc1 ON pprDoc1.A_ID = doc1.DOCUMENTSTYPE and pprDoc1.A_PARENT = 2090 and pprDoc1.A_STATUS = 10
-	where ld1.FROMID = @pet) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE
-where ld.FROMID = @pet
-
-/*Справки о праве*/
-select rtrim(ISNULL(SURNAME.A_NAME, '') + ' ' + ISNULL(FIRSTNAME.A_NAME,'') + ' ' + ISNULL(SECONDNAME.A_NAME, '')) as relativeFIO,
-	   isnull(doc.DOCUMENTSERIES, '') as ser, isnull(doc.DOCUMENTSNUMBER, '') as num, isnull(sgr.A_NAME, '') as relation,
-	   case when doc.A_DOCBASESTARTDATE is not null then convert(char, doc.A_DOCBASESTARTDATE, 104) else '' end as date,
-	   doc.PERSONOUID, doc.A_DOCBASESTARTDATE
-into #tmpspr	   
-from SPR_LINK_APPEAL_DOC ld 
-	join WM_ACTDOCUMENTS doc on ld.TOID = doc.OUID and doc.A_STATUS = 10 and doc.DOCUMENTSTYPE in (1796, 2067, 3893, 3894)
-	join 
-	(select doc1.PERSONOUID, MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE
-	from SPR_LINK_APPEAL_DOC ld1 
-		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.DOCUMENTSTYPE in (1796, 2067, 3893, 3894)
-	where ld1.FROMID = @pet
-	group by doc1.PERSONOUID) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE and doc.PERSONOUID = md.PERSONOUID
-	left outer join SPR_GROUP_ROLE sgr on sgr.OUID = doc.A_RELATION
-	join WM_PERSONAL_CARD pc on doc.PERSONOUID = pc.OUID and pc.A_STATUS = 10
-	left outer join SPR_FIO_SURNAME AS SURNAME on SURNAME.OUID = pc.SURNAME
-	left outer join SPR_FIO_NAME AS FIRSTNAME on FIRSTNAME.OUID = pc.A_NAME
-	left outer join SPR_FIO_SECONDNAME AS SECONDNAME on SECONDNAME.OUID = pc.A_SECONDNAME
-where ld.FROMID = @pet
-
-/*Доли собственности*/
-select own.A_OUID, own.A_OWNER_ID, own.A_PART
-into #tmps
-from WM_OWNING own
-	join #tmpspr l on l.PERSONOUID = own.A_OWNER_ID
-	join
-	(select own1.A_OWNER_ID, MAX(own1.A_OUID) as A_OUID
-	 from WM_OWNING own1
-		join #tmpspr l1 on l1.PERSONOUID = own1.A_OWNER_ID
-	 where own1.A_ADDR_ID = @adrrl and own1.A_STATUS = 10
-		and (own1.A_START_OWN_DATE is null or CONVERT(date, own1.A_START_OWN_DATE) <= @dreg)
-		and (own1.A_END_OWN_DATE is null or CONVERT(date, own1.A_END_OWN_DATE) >= @dreg)
-	 group by own1.A_OWNER_ID) mo on mo.A_OWNER_ID = own.A_OWNER_ID and mo.A_OUID = own.A_OUID
-where own.A_ADDR_ID = @adrrl and own.A_STATUS = 10
-	and (own.A_START_OWN_DATE is null or CONVERT(date, own.A_START_OWN_DATE) <= @dreg)
-	and (own.A_END_OWN_DATE is null or CONVERT(date, own.A_END_OWN_DATE) >= @dreg)
-
-select @part = SUM(A_PART)
-from #tmps
-
-/*@fls = 0 - наниматель, @fls = 1 - собственник*/
-if (@docs is not null and @docstype in ('naim', 'specNaim', 'contractSocialHire'))
-  begin
-   set @fls = 0
-   set @part = 1
-  end
- else
-  begin
-   set @fls = 1
-   if isnull(@part, 0) = 0 set @part = 1
-  end
-
-select @dnosn = min(A_DOCBASESTARTDATE) from #tmpspr where PERSONOUID = @pcpetl
+--------------------------------------------------------------------------------------------
 
 
-/*Оформлена с по*/
-if @petType = 1     /*Заявление на назначение*/
-  begin
-   set @d1 = dateadd("day", 1-DAY(@dreg), @dreg)
-  end
- else
-  begin
-   select @d1 = dateadd(day, 1, convert(date, ssp.A_LASTDATE))
-   from SPR_SERV_PERIOD ssp
-	   join
-	    (select MAX(STARTDATE) as sd
-		from SPR_SERV_PERIOD
-		where A_SERV = @serv and A_STATUS = 10) md on md.sd = ssp.STARTDATE
-   where ssp.A_SERV = @serv and ssp.A_STATUS = 10  
-  end
-set @d2 = DATEADD(DAY, -1, DATEADD(MONTH, 6, @d1))
+--Справки о праве.
+SELECT 
+    RTRIM(ISNULL(fioSurname.A_NAME, '') + ' ' + ISNULL(fioName.A_NAME,'') + ' ' + ISNULL(fioSecondname.A_NAME, '')) AS relativeFIO,
+    ISNULL(actDocuments.DOCUMENTSERIES, '')                                                                         AS ser, 
+    ISNULL(actDocuments.DOCUMENTSNUMBER, '')                                                                        AS num, 
+    ISNULL(groupRole.A_NAME, '')                                                                                    AS relation,
+    CASE 
+        WHEN actDocuments.A_DOCBASESTARTDATE IS NOT NULL THEN CONVERT(CHAR, actDocuments.A_DOCBASESTARTDATE, 104) 
+        ELSE '' 
+    END                                                                                                             AS date,
+    actDocuments.PERSONOUID, 
+    actDocuments.A_DOCBASESTARTDATE
+INTO #tmpspr	   
+FROM SPR_LINK_APPEAL_DOC appeal_doc --Связка обращения с документами.
+----Действующие документы.
+    INNER JOIN WM_ACTDOCUMENTS actDocuments   
+        ON actDocuments.OUID  = appeal_doc.TOID --Связка с обращением.
+            AND actDocuments.A_STATUS = 10      --Статус в БД "Действует".
+            AND actDocuments.DOCUMENTSTYPE IN (
+                1796,	--Справка о праве на получение компенсационных выплат в связи с расходами по оплате жилого помещения, коммунальных и других видов услуг (ФЗ "О статусе военнослужащего", ст.24 п.4)
+                2067,	--Справка о праве на получение компенсационных выплат в связи с расходами по оплате жилого помещения, коммунальных и др. видов услуг (78-ФЗ ст.2)
+                3893,	--Справка о праве на получение компенсационных выплат в связи с расходами по оплате жилого помещения, коммунальных и других видов услуг (247-ФЗ, ст.10 п.1-3, п.5)
+                3894	--Справка о праве на получение компенсационных выплат в связи с расходами по оплате жилого помещения, коммунальных и других видов услуг (283-ФЗ, п.1-3)
+            )
+----Подзапрос для выбора последнего документа.
+    INNER JOIN (
+        SELECT 
+            doc.PERSONOUID, 
+            MAX(doc.ISSUEEXTENSIONSDATE) AS ISSUEEXTENSIONSDATE
+        FROM SPR_LINK_APPEAL_DOC ld --Связка обращения с документами.
+        ----Действующие документы.
+            INNER JOIN WM_ACTDOCUMENTS doc
+                ON ld.TOID = doc.OUID                                   --Связка с обращением.
+                    AND doc.A_STATUS = 10                               --Статус в БД "Действует".
+                    AND doc.DOCUMENTSTYPE IN (1796, 2067, 3893, 3894)   --Нужный вид документа.       
+        WHERE ld.FROMID = @pet --Обращение отчета.
+        GROUP BY doc.PERSONOUID
+    ) md 
+        ON md.ISSUEEXTENSIONSDATE = actDocuments.ISSUEEXTENSIONSDATE    --Связка по дате.
+            AND md.PERSONOUID = actDocuments.PERSONOUID                 --Связка по личному делу.
+----Тип родсвтенной связи.
+    LEFT JOIN SPR_GROUP_ROLE groupRole
+        ON groupRole.OUID = actDocuments.A_RELATION --Связка с документом.
+----Личное дело держателя документа.
+	INNER JOIN WM_PERSONAL_CARD personalCard  
+	    ON personalCard .OUID = actDocuments.PERSONOUID --Связка с документом.
+	        AND personalCard.A_STATUS = 10              --Статус в БД "Действует".
+----Фамилия.
+    LEFT JOIN SPR_FIO_SURNAME fioSurname
+        ON fioSurname.OUID = personalCard.SURNAME --Связка с личным делом.
+----Имя.     
+    LEFT JOIN SPR_FIO_NAME fioName
+        ON fioName.OUID = personalCard.A_NAME --Связка с личным делом.      
+----Отчество.   
+    LEFT JOIN SPR_FIO_SECONDNAME fioSecondname
+        ON fioSecondname.OUID = personalCard.A_SECONDNAME --Связка с личным делом.     
+WHERE appeal_doc.FROMID = @pet --Обращение отчета.
 
-  
+--Дата начала действия основания.
+SELECT 
+    @dnosn = MIN(A_DOCBASESTARTDATE) 
+FROM #tmpspr 
+WHERE PERSONOUID = @pcpetl
+
+
+--------------------------------------------------------------------------------------------
+
+
+--Доли собственности (c 01-08-2020 не учитывается).
+SELECT 
+    own.A_OUID, 
+    own.A_OWNER_ID, 
+    own.A_PART
+INTO #tmps
+FROM WM_OWNING own --Владельцы недвижимости.
+----Справка о праве.
+    INNER JOIN #tmpspr l 
+        ON l.PERSONOUID = own.A_OWNER_ID
+----Для выбора нужного имущества.
+    INNER JOIN (
+        SELECT 
+	        own1.A_OWNER_ID, 
+	        MAX(own1.A_OUID) AS A_OUID
+        FROM WM_OWNING own1 --Владельцы недвижимости.
+        ----Справка о праве.
+            INNER JOIN #tmpspr l1 
+                ON l1.PERSONOUID = own1.A_OWNER_ID --СВязка с недвижимостью.
+        WHERE own1.A_ADDR_ID = @adrrl                                                               --Адрес такой же, как и в документе.
+            AND own1.A_STATUS = 10                                                                  --Статус в БД "Действует".
+            AND (own1.A_START_OWN_DATE IS NULL OR CONVERT(DATE, own1.A_START_OWN_DATE) <= @dreg)    --Дата возникновения права собственности раньше, чем дата заявления.
+            AND (own1.A_END_OWN_DATE IS NULL OR CONVERT(DATE, own1.A_END_OWN_DATE) >= @dreg)        --Дата прекращения права собственности позже, чем дата заявления.
+        GROUP BY own1.A_OWNER_ID
+    ) mo 
+        ON mo.A_OWNER_ID = own.A_OWNER_ID   --Связка с недвижимостью.
+            AND mo.A_OUID = own.A_OUID      --Связка с недвижимостью.
+WHERE own.A_ADDR_ID = @adrrl                                                            --Адрес такой же, как и в документе.
+    AND own.A_STATUS = 10                                                               --Статус в БД "Действует".
+    AND (own.A_START_OWN_DATE IS NULL OR CONVERT(DATE, own.A_START_OWN_DATE) <= @dreg)  --Дата возникновения права собственности раньше, чем дата заявления.
+    AND (own.A_END_OWN_DATE IS NULL OR CONVERT(DATE, own.A_END_OWN_DATE) >= @dreg)      --Дата прекращения права собственности позже, чем дата заявления.
+
+--Подсчет доли.
+SELECT @part = SUM(A_PART)
+FROM #tmps
+
+
+
+--Конец рефакторинга.
+--//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
 select convert(char, app.A_DATE_REG, 104) as petitionDate,
 	rtrim(ISNULL(SURNAME.A_NAME, '') + ' ' + ISNULL(FIRSTNAME.A_NAME,'') + ' ' + ISNULL(SECONDNAME.A_NAME, '')) as FIO,
 	@phones as phone, adr.A_ADRTITLE as address,
@@ -229,6 +356,7 @@ from #tmpspr spr
 	left outer join #tmps s on s.A_OWNER_ID = spr.PERSONOUID
 order by 1
 
+
 /*----------------------------------------------------------*/
 /*Все заявления*/
 
@@ -239,6 +367,8 @@ from WM_PETITION pet
 	join WM_APPEAL_NEW app on app.OUID = pet.OUID and app.A_STATUS = 10
 	join ESRN_SERV_SERV ess on ess.A_REQUEST = pet.OUID and ess.A_STATUS = 10 and ess.A_SERV = 310
 where pet.A_STATUSPRIVELEGE = 13 and pet.A_PETITION_TYPE = 1 and pet.A_MSPHOLDER = @pcpetl
+
+SELECT * FROM #tmpf1
 
 /*Самое первое заявление (о назначении)*/
 select @minpet = t.OUID
@@ -257,6 +387,7 @@ from SPR_LINK_APPEAL_DOC ld
 		  join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.DOCUMENTSTYPE in (1796, 2067, 3893, 3894) and doc1.PERSONOUID = @pcpetl
 	 where ld1.FROMID = @minpet) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE
 where ld.FROMID = @minpet
+
 
 select *
 into #tmppet
@@ -280,6 +411,7 @@ select OUID,
 from #tmpf1
 ) a
 
+
 select p1.ouid, p1.a_date_reg, p1.d,
 	DATEADD(MONTH, -1,
 	isnull(
@@ -290,7 +422,6 @@ select p1.ouid, p1.a_date_reg, p1.d,
 	) as d2
 into #tmppet1
 from #tmppet p1
-
 
 /*Зарегистрированные*/
 select doc.A_AMOUNT_PERSON as reg, pet.OUID, doc.A_AMOUNT_LGOT as lg
@@ -304,23 +435,6 @@ from SPR_LINK_APPEAL_DOC ld
 		join #tmppet1 pet1 on ld1.FROMID = pet1.OUID
 		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.DOCUMENTSTYPE = 2091
 	group by pet1.OUID) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE and md.OUID = pet.OUID
-
-/*Льготники*/
-/*
-select pet.OUID, COUNT(*) as lg
-into #tmppetlg
-from SPR_LINK_APPEAL_DOC ld 
-	join #tmppet1 pet on ld.FROMID = pet.OUID
-	join WM_ACTDOCUMENTS doc on ld.TOID = doc.OUID and doc.A_STATUS = 10 and doc.DOCUMENTSTYPE = 2091
-	join 
-	(select MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE, pet1.OUID
-	from SPR_LINK_APPEAL_DOC ld1 
-		join #tmppet1 pet1 on ld1.FROMID = pet1.OUID
-		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.DOCUMENTSTYPE = 2091
-	group by pet1.OUID) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE and md.OUID = pet.OUID
-	join LINK_ACTDOC_PC ldpc on ldpc.A_FROMID = doc.OUID
-	group by pet.OUID
-*/
 
 /*Справки о праве*/
 select pet.OUID, doc.PERSONOUID, pet.d, pet.A_DATE_REG
@@ -392,7 +506,6 @@ from #tmppet1 p
 /*----------------------------------------------------------*/
 
 
-
 ----------------------------------------------------------------------------------------
 
 
@@ -439,7 +552,7 @@ from WM_RECEIPT rec
 	join WM_RECEIPT_AMOUNT reca on reca.A_RECEIPT = rec.A_OUID and reca.A_STATUS = 10 and A_NAME_AMOUNT in (68, 69, 70, 11, 20, 39, 42, 45, 81, 25, 162, 38, 388, 391, 392)
 	left outer join SPR_HSC_TYPES s on s.A_STATUS = 10 and s.A_ID = A_NAME_AMOUNT
 where rec.A_STATUS = 10 and rec.A_PAYER = @pcpetl and rec.A_ADDR_ID = @adrrl and convert(date, dateadd("day", 1-DAY(rec.A_PAYMENT_DATE), rec.A_PAYMENT_DATE)) < convert(date, dateadd("day", 1-DAY(@dreg), @dreg))
-	and (pet.fls = 0 and A_NAME_AMOUNT <> 38 or pet.fls = 1)
+	--and (pet.fls = 0 and A_NAME_AMOUNT <> 38 or pet.fls = 1)
 	and convert(date, dateadd("day", 1-DAY(rec.A_PAYMENT_DATE), rec.A_PAYMENT_DATE)) between @s1 and @s2
 
 
