@@ -26,11 +26,6 @@ declare @minpetdate date
 set @s1 = convert(date, dateadd("day", 1-DAY(#beginDate#), #beginDate#))
 set @s2 = convert(date, dateadd("day", 1-DAY(#endDate#), #endDate#))
 
---set @s1 = CONVERT(date, '2018-12-01')
---set @s2 = CONVERT(date, '2018-12-31')
---set @s1 = CONVERT(date, '2018-09-01')
---set @s2 = CONVERT(date, '2019-02-28')
-
 
 IF OBJECT_ID('tempdb..#tmpl') IS NOT NULL BEGIN DROP TABLE #tmpl END
 IF OBJECT_ID('tempdb..#tmps') IS NOT NULL BEGIN DROP TABLE #tmps END
@@ -47,7 +42,14 @@ IF OBJECT_ID('tempdb..#tmppetpart') IS NOT NULL BEGIN DROP TABLE #tmppetpart END
 IF OBJECT_ID('tempdb..#tmppetdoc') IS NOT NULL BEGIN DROP TABLE #tmppetdoc END
 IF OBJECT_ID('tempdb..#tmpf1') IS NOT NULL BEGIN DROP TABLE #tmpf1 END
 
-set @pet = #objectID# /*4687027*/ /*4913434*/ /*4955905*/ /*528472*/ /*4980574*/ /*5036332*/ /*4967518*/ /*5102745*/ /*5039406*/ /*5177517*/ /*5155507*/ /*5411226*/
+--5822584
+--6362998
+
+--5848915
+--6346814
+
+set @pet = #objectID# 
+
 SET @phones = ''
 
 /*Заявитель, тип заявления, дата регистрации заявления, получатель льготы*/
@@ -390,6 +392,11 @@ from #tmppet1 p
 /*----------------------------------------------------------*/
 
 
+
+----------------------------------------------------------------------------------------
+
+
+--Расчет.
 select reca.A_PAY as ServicePay, reca.A_NAME_AMOUNT,
 	 case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else pet.reg end as qz,
 	 case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else pet.lg end as ql,
@@ -398,14 +405,34 @@ select reca.A_PAY as ServicePay, reca.A_NAME_AMOUNT,
 	 else CONVERT(varchar(15), pet.part) 
 	end as part,
 	s.A_NAME as serviceName,
-	cast(
-	case
-	 when A_NAME_AMOUNT in (68, 69, 70) then reca.A_PAY * 0.6
-	 when A_NAME_AMOUNT in (11, 20, 39, 42, 45, 81, 25, 388, 391, 392) then reca.A_PAY/(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else pet.reg end)*(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else pet.lg end) * 0.6
-	 when A_NAME_AMOUNT in (162, 38) and pet.fls = 0 then reca.A_PAY/(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else pet.reg end)*(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else pet.lg end) * 0.6
-	 when A_NAME_AMOUNT in (162, 38) and pet.fls = 1 then reca.A_PAY * pet.part * 0.6
-	 else 0
-	end as decimal(10, 4)) as result, convert(date, dateadd("day", 1-DAY(rec.A_PAYMENT_DATE), rec.A_PAYMENT_DATE)) as PAYMENT_DATE, pet.fls
+  ------------------------------------------------------------------------------
+    CASE 
+        --Старый расчет по долям.
+        WHEN CONVERT(DATE, rec.A_PAYMENT_DATE) < CONVERT(DATE, '20200801') THEN CAST (
+            CASE
+                WHEN A_NAME_AMOUNT IN (68, 69, 70) THEN reca.A_PAY * 0.6
+                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392) THEN reca.A_PAY/(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else pet.reg end)*(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else pet.lg end) * 0.6
+                WHEN A_NAME_AMOUNT IN (162, 38) AND @fls = 0 THEN reca.A_PAY/(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else pet.reg end)*(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else pet.lg end) * 0.6
+                WHEN A_NAME_AMOUNT IN (162, 38) AND @fls = 1 THEN reca.A_PAY * pet.part * 0.6
+                ELSE 0
+            END AS DECIMAL(10, 4)
+        ) 
+        --Новый расчет по количеству. 
+        ELSE CAST (
+	        CASE
+                WHEN A_NAME_AMOUNT IN (68, 69, 70) THEN reca.A_PAY * 0.6
+                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392, 162, 38) THEN reca.A_PAY/(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else pet.reg end)*(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else pet.lg end) * 0.6
+                else 0
+            END AS DECIMAL(10, 4))
+    END AS result,
+    convert(date, dateadd("day", 1-DAY(rec.A_PAYMENT_DATE), rec.A_PAYMENT_DATE)) as PAYMENT_DATE, 
+    pet.fls,
+  ------------------------------------------------------------------------------
+    CASE
+        WHEN CONVERT(DATE, rec.A_PAYMENT_DATE) < CONVERT(DATE, '20200801') THEN 1
+        ELSE 0
+    END AS OLD_CALCULATION
+  ------------------------------------------------------------------------------
 into #tmpr	
 from WM_RECEIPT rec
 	join #tmppet2 pet on convert(date, dateadd("day", 1-DAY(rec.A_PAYMENT_DATE), rec.A_PAYMENT_DATE)) between pet.d and pet.d2
@@ -416,18 +443,61 @@ where rec.A_STATUS = 10 and rec.A_PAYER = @pcpetl and rec.A_ADDR_ID = @adrrl and
 	and convert(date, dateadd("day", 1-DAY(rec.A_PAYMENT_DATE), rec.A_PAYMENT_DATE)) between @s1 and @s2
 
 
-select ServicePay, A_NAME_AMOUNT,
-	 case
-	  when A_NAME_AMOUNT in (11, 20, 39, 42, 45, 81, 25, 388, 391, 392) then CONVERT(varchar(15), qz)
-	  when A_NAME_AMOUNT = 162 and fls = 0 then CONVERT(varchar(15), qz)
-	  else '-'
-	 end as qz,
-	 case
-	  when A_NAME_AMOUNT in (11, 20, 39, 42, 45, 81, 25, 388, 391, 392) then CONVERT(varchar(15), ql)
-	  when A_NAME_AMOUNT = 162 and fls = 0 then CONVERT(varchar(15), ql)
-	  else '-'
-	 end as ql,
-	 case when A_NAME_AMOUNT in (162, 38) and fls = 1 then part else '-' end as part,
-	 serviceName, round(result, 2) as result, PAYMENT_DATE, convert(char, PAYMENT_DATE, 104) as pd
-from #tmpr
-order by PAYMENT_DATE, serviceName
+----------------------------------------------------------------------------------------
+
+
+--Вывод расчета компенсаций для отчета.
+SELECT 
+    serviceName         AS serviceName, 
+    ServicePay          AS ServicePay, 
+  ------------------------------------------------------------------------------
+    --Зарегестрировано.
+    CASE OLD_CALCULATION
+        --Старый расчет по долям.
+        WHEN 1 THEN 
+            CASE
+                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392) THEN CONVERT(VARCHAR(15), qz)
+                WHEN A_NAME_AMOUNT = 162 AND fls = 0 THEN CONVERT(VARCHAR(15), qz) --Содержание и ремонт жилого помещения.
+                ELSE '-'
+            END 
+        --Новый расчет по количеству. 
+        ELSE       
+            CASE
+                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392, 162, 38) THEN CONVERT(VARCHAR(15), qz)
+                ELSE '-'
+	        END  
+    END AS qz,
+  ------------------------------------------------------------------------------
+    --Льготники.
+    CASE OLD_CALCULATION
+        --Старый расчет по долям.
+        WHEN 1 THEN 
+            CASE
+                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392) THEN CONVERT(VARCHAR(15), ql)
+                WHEN A_NAME_AMOUNT = 162 AND fls = 0 THEN CONVERT(VARCHAR(15), ql) --Содержание и ремонт жилого помещения.
+                ELSE '-'
+            END
+        --Новый расчет по количеству. 
+        ELSE 
+            CASE
+                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392, 162, 38) THEN CONVERT(VARCHAR(15), ql)
+                ELSE '-'
+            END
+    END AS ql,
+  ------------------------------------------------------------------------------
+    --Доля.
+    CASE OLD_CALCULATION
+        --Старый расчет по долям.
+        WHEN 1 THEN 
+            CASE 
+                WHEN A_NAME_AMOUNT IN (162, 38) AND fls = 1 THEN part  --Содержание и ремонт жилого помещения или Капитальный ремонт.
+                ELSE '-' 
+            END
+        --Новый расчет по количеству.
+        ELSE '-'
+    END AS part,
+  ------------------------------------------------------------------------------
+    ROUND(result, 2) AS result,
+    CONVERT(CHAR, PAYMENT_DATE, 104) AS pd
+FROM #tmpr
+ORDER BY PAYMENT_DATE, serviceName
