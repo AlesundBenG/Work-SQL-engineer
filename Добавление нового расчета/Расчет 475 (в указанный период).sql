@@ -28,9 +28,9 @@ DECLARE @minpetdate DATE
 --------------------------------------------------------------------------------------------
 
 --Входные параметры отчета.
-SET @pet = 6346814                                                              --Заявление. #objectID#
-SET @s1 = CONVERT(DATE, DATEADD("day", 1 - DAY('01-01-2020'), '01-01-2020'))    --Начало отчетной недели.  #beginDate#
-SET @s2 = CONVERT(DATE, DATEADD("day", 1 - DAY('31-12-2020'), '31-12-2020'))    --Конец отчетной недели.  #endDate#
+SET @pet = #objectID#                                                              --Заявление.
+SET @s1 = CONVERT(DATE, DATEADD(DAY, 1 - DAY(#beginDate#), #beginDate#))    --Начало отчетной недели. 
+SET @s2 = CONVERT(DATE, DATEADD(DAY, 1 - DAY(#endDate#), #endDate#))    --Конец отчетной недели. 
 
 
 --------------------------------------------------------------------------------------------
@@ -545,6 +545,7 @@ FROM SPR_LINK_APPEAL_DOC appeal_doc --Класс связки Обращения
             AND realty.A_OWNER_ID = @personalCardId --Связка с личным делом отчета.
 WHERE appeal_doc.FROMID =  @petitionId   --Заявление отчета.
    
+   
 ------------------------------------------------------------------------------------------------------------------------------       
 
 
@@ -594,7 +595,7 @@ select
     --p.OUID, 
     --p.A_DATE_REG, 
     realtyPart.REALTY_START_DATE AS d, 
-    ISNULL(realtyPart.REALTY_END_DATE, CONVERT(DATE, '30001231')) AS d2, 
+    realtyPart.REALTY_END_DATE AS d2, 
     --isnull(realtyPart.COUNT_PEOPLE, realtyPart.COUNT_BENIFICIARY) as reg,
     NULL AS reg, 
     NULL AS lg,
@@ -650,7 +651,7 @@ select reca.A_PAY as ServicePay, reca.A_NAME_AMOUNT,
   ------------------------------------------------------------------------------
 into #tmpr	
 from WM_RECEIPT rec
-	join #tmppet2 pet on convert(date, dateadd("day", 1-DAY(rec.A_PAYMENT_DATE), rec.A_PAYMENT_DATE)) between pet.d and pet.d2
+	join #tmppet2 pet on convert(date, dateadd("day", 1-DAY(rec.A_PAYMENT_DATE), rec.A_PAYMENT_DATE)) between pet.d and ISNULL(pet.d2, CONVERT(DATE, '29991231'))
 	join WM_RECEIPT_AMOUNT reca on reca.A_RECEIPT = rec.A_OUID and reca.A_STATUS = 10 and A_NAME_AMOUNT in (68, 69, 70, 11, 20, 39, 42, 45, 81, 25, 162, 38, 388, 391, 392)
 	left outer join SPR_HSC_TYPES s on s.A_STATUS = 10 and s.A_ID = A_NAME_AMOUNT
 where rec.A_STATUS = 10 and rec.A_PAYER = @pcpetl and rec.A_ADDR_ID = @adrrl and convert(date, dateadd("day", 1-DAY(rec.A_PAYMENT_DATE), rec.A_PAYMENT_DATE)) < convert(date, dateadd("day", 1-DAY(@dreg), @dreg))
@@ -681,6 +682,7 @@ SELECT
         ELSE ISNULL(CONVERT(varchar(15), @part), '')
     END                                                                             AS PART
 FROM WM_PETITION petition   --Заявление.
+----Обращение.
     INNER JOIN WM_APPEAL_NEW appeal 
         ON appeal.OUID = petition.OUID      --Связка с заявлением.
             AND appeal.A_STATUS = 10        --Статус в БД "Действует".
@@ -724,7 +726,7 @@ SELECT
     ISNULL(CONVERT(VARCHAR, realtyPart.REALTY_END_DATE, 104), '')   AS REALTY_END_DATE
 FROM #tmpspr spr
 	LEFT JOIN #REALTY_PART realtyPart ON realtyPart.PERSONOUID = spr.PERSONOUID
-ORDER BY realtyPart.REALTY_START_DATE
+--ORDER BY 1
 
 
 ----------------------------------------------------------------------------------------
