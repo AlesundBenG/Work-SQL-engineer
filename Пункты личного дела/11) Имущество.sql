@@ -5,7 +5,7 @@ SELECT
     CASE
         WHEN ISNULL(realty.A_PARTDENOMPART,0) <> 0 
 	        THEN CAST(realty.A_PARTNUMPART AS FLOAT) / CAST(realty.A_PARTDENOMPART AS FLOAT)	
-            ELSE realty.A_PART
+        ELSE realty.A_PART
     END                                     AS [Доля собственности],
     realty.A_TOTAL_AREA                     AS [Общая площадь],
     CONVERT(DATE, realty.A_START_OWN_DATE)  AS [Дата возникновения права собственности],

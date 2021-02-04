@@ -326,38 +326,7 @@ FROM #tmps
 --//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-
-select convert(char, app.A_DATE_REG, 104) as petitionDate,
-	rtrim(ISNULL(SURNAME.A_NAME, '') + ' ' + ISNULL(FIRSTNAME.A_NAME,'') + ' ' + ISNULL(SECONDNAME.A_NAME, '')) as FIO,
-	@phones as phone, adr.A_ADRTITLE as address,
-	convert(char, @d1, 104) as dateFrom, case when @d2 is not null then convert(char, @d2, 104) else '' end as dateTo,
-	@reg as qz, @lg as ql,
-	isnull(@docs, '') as doc,
-	case
-	 when @part = 1 then '1' 
-	 else CONVERT(varchar(15), @part) 
-	end as qpart
-from WM_PETITION pet
-	join WM_APPEAL_NEW app on app.OUID = pet.OUID and app.A_STATUS = 10
-	join WM_PERSONAL_CARD pc on pc.OUID = app.A_PERSONCARD
-	left outer join SPR_FIO_SURNAME AS SURNAME on SURNAME.OUID = pc.SURNAME
-	left outer join SPR_FIO_NAME AS FIRSTNAME on FIRSTNAME.OUID = pc.A_NAME
-	left outer join SPR_FIO_SECONDNAME AS SECONDNAME on SECONDNAME.OUID = pc.A_SECONDNAME
-	left outer join WM_ADDRESS adr on adr.OUID = pc.A_REGFLAT and adr.A_STATUS = 10
-where pet.OUID = @pet
-
-select spr.relativeFIO, spr.ser, spr.num, spr.relation, spr.date,
-	case
-	 when s.A_PART is null then ''
-	 when s.A_PART = 1 then '1' 
-	 else CONVERT(varchar(15), s.A_PART) 
-	end as part
-from #tmpspr spr
-	left outer join #tmps s on s.A_OWNER_ID = spr.PERSONOUID
-order by 1
-
-
-/*----------------------------------------------------------*/
+/*----------------------------------------------------------
 /*Все заявления*/
 
 /*Заявления на назначения*/
@@ -502,8 +471,141 @@ from #tmppet1 p
 --	left outer join #tmppetlg l on l.OUID = p.OUID
 	left outer join #tmppetpart part on part.OUID = p.OUID
 	left outer join #tmppetdoc doc on doc.OUID = p.OUID
+*/
 
-/*----------------------------------------------------------*/
+
+--------------------------------------------------------------------------------------------------------------------------------
+/*Посредник получения долей.*/
+
+--Личное дело заявителя.
+DECLARE @personalCardId INT
+SET @personalCardId = @pcpetl
+
+--Идентификатор заявления.
+DECLARE @petitionId INT
+SET @petitionId = @pet
+
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+
+--Удаление временных таблиц.
+IF OBJECT_ID('tempdb..#REALTY_DOC')     IS NOT NULL BEGIN DROP TABLE #REALTY_DOC    END --Документы о имуществе.
+IF OBJECT_ID('tempdb..#REALTY_PART')    IS NOT NULL BEGIN DROP TABLE #REALTY_PART   END --Доли собственности по периодам.
+
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+
+--Создание временных таблиц.
+CREATE TABLE #REALTY_DOC (
+    DOC_OUID            INT,    --Идентификатор документа.
+    PERSONOUID          INT,    --Идентификатор личного дела владельца недвижимости.
+    REALTY_START_DATE   DATE,   --Дата возникновения права собственности.
+    REALTY_END_DATE     DATE,   --Дата прекращения права собственности.
+    PART                FLOAT,  --Доля.
+)
+CREATE TABLE #REALTY_PART (
+    PERSONOUID          INT,    --Идентификатор личного дела владельца недвижимости.
+    REALTY_START_DATE   DATE,       --Дата возникновения права собственности.
+    REALTY_END_DATE     DATE,       --Дата прекращения права собственности.
+    PART                FLOAT,      --Доля.
+    OWNING_TYPE         VARCHAR(10) --Тип собственности.
+)
+
+------------------------------------------------------------------------------------------------------------------------------
+
+
+--Выборка документов о имуществе.
+INSERT INTO #REALTY_DOC (DOC_OUID, PERSONOUID, REALTY_START_DATE, REALTY_END_DATE, PART)
+SELECT 
+    actDocument.OUID                        AS DOC_OUID, 
+    realty.A_OWNER_ID                       AS PERSONOUID,
+    CONVERT(DATE, realty.A_START_OWN_DATE)  AS REALTY_START_DATE, 
+    CONVERT(DATE, realty.A_END_OWN_DATE)    AS REALTY_END_DATE, 
+    ISNULL(CASE 
+        WHEN ISNULL(realty.A_PARTDENOMPART , 0)<> 0 
+            THEN CAST(realty.A_PARTNUMPART AS FLOAT) / CAST(realty.A_PARTDENOMPART  AS FLOAT)
+            ELSE realty.A_PART 
+        END, 1 
+    )   AS PART
+FROM SPR_LINK_APPEAL_DOC appeal_doc --Класс связки Обращения-Документы.
+----Действующие документы.
+    INNER JOIN WM_ACTDOCUMENTS actDocument 
+        ON actDocument.OUID = appeal_doc.TOID   --Связка с обращением.
+            AND actDocument.A_STATUS = 10       --Статус в БД "Действует".	
+            AND actDocument.DOCUMENTSTYPE IN (  --Тип документа.
+                3800,   --Свидетельство о государственной регистрации права собственности.
+                4017,   --Выписка из единого государственного реестра прав на недвижимое имущество.
+                4196    --Документ о регистрации права собственности.
+            )		
+----Имущество.
+    LEFT JOIN WM_OWNING realty 
+        ON realty.A_OUID = actDocument.A_ESTATE     --Связка с документом.
+            AND realty.A_OWNER_ID = @personalCardId --Связка с личным делом отчета.
+WHERE appeal_doc.FROMID =  @petitionId   --Заявление отчета.
+   
+------------------------------------------------------------------------------------------------------------------------------       
+
+
+--Доли собственности.
+INSERT INTO #REALTY_PART (PERSONOUID, REALTY_START_DATE, REALTY_END_DATE, PART, OWNING_TYPE)
+SELECT	
+    realtyDoc.PERSONOUID,
+    realtyDoc.REALTY_START_DATE,
+    realtyDoc.REALTY_END_DATE, 
+    realtyDoc.PART,
+    CASE WHEN EXISTS (
+        SELECT 1 
+        FROM SPR_LINK_APPEAL_DOC linkDoc 
+            INNER JOIN WM_ACTDOCUMENTS docNaim 
+                ON docNaim.OUID = linkDoc.TOID 
+                    AND docNaim.DOCUMENTSTYPE in (2130,2131,2132) 
+        WHERE FROMID = @petitionId
+    )   
+        THEN 'naim' 
+        ELSE 'sobst' 
+    END OWNING_TYPE 
+FROM WM_PETITION petition --Заявление.
+----Класс связки Обращения-Документы.
+    INNER JOIN SPR_LINK_APPEAL_DOC appeal_doc 
+        ON appeal_doc.FROMID = petition.OUID --Связка с документом.
+----Действующие документы.
+    INNER JOIN WM_ACTDOCUMENTS actDocument 
+        ON actDocument.OUID = appeal_doc.TOID --Связка с заявлением.
+----Документы об имуществе.
+    LEFT JOIN #REALTY_DOC realtyDoc
+        ON realtyDoc.PERSONOUID = actDocument.PERSONOUID   --Связка с личным делом.
+WHERE petition.OUID = @petitionId   --Заявление отчета.
+    AND actDocument.A_STATUS = 10   --Статус в БД "Действует".
+    AND actDocument.DOCUMENTSTYPE IN (
+        1796,   --Справка о праве на получение компенсационных выплат в связи с расходами по оплате жилого помещения, коммунальных и других видов услуг (ФЗ "О статусе военнослужащего", ст.24 п.4)
+        2067,   --Справка о праве на получение компенсационных выплат в связи с расходами по оплате жилого помещения, коммунальных и др. видов услуг (78-ФЗ ст.2)
+        3893,   --Справка о праве на получение компенсационных выплат в связи с расходами по оплате жилого помещения, коммунальных и других видов услуг (247-ФЗ, ст.10 п.1-3, п.5)
+        3894    --Справка о праве на получение компенсационных выплат в связи с расходами по оплате жилого помещения, коммунальных и других видов услуг (283-ФЗ, п.1-3)
+	)
+
+
+------------------------------------------------------------------------------------------------------------------------------
+
+
+--Интерфейс с результатом отчета.
+select 
+    --p.OUID, 
+    --p.A_DATE_REG, 
+    realtyPart.REALTY_START_DATE AS d, 
+    ISNULL(realtyPart.REALTY_END_DATE, CONVERT(DATE, '30001231')) AS d2, 
+    --isnull(realtyPart.COUNT_PEOPLE, realtyPart.COUNT_BENIFICIARY) as reg,
+    NULL AS reg, 
+    NULL AS lg,
+    case when realtyPart.OWNING_TYPE = 'naim' then 0 else 1 end as fls,
+    case
+        when realtyPart.OWNING_TYPE = 'naim' then 1
+        when isnull(realtyPart.PART, 0) = 0 then 1
+        else realtyPart.PART 
+    end as part
+into #tmppet2
+from #REALTY_PART realtyPart
 
 
 ----------------------------------------------------------------------------------------
@@ -557,6 +659,42 @@ where rec.A_STATUS = 10 and rec.A_PAYER = @pcpetl and rec.A_ADDR_ID = @adrrl and
 
 
 ----------------------------------------------------------------------------------------
+
+
+--Вывод общей информации для отчета.
+select convert(char, app.A_DATE_REG, 104) as petitionDate,
+	rtrim(ISNULL(SURNAME.A_NAME, '') + ' ' + ISNULL(FIRSTNAME.A_NAME,'') + ' ' + ISNULL(SECONDNAME.A_NAME, '')) as FIO,
+	@phones as phone, adr.A_ADRTITLE as address,
+	convert(char, @d1, 104) as dateFrom, case when @d2 is not null then convert(char, @d2, 104) else '' end as dateTo,
+	@reg as qz, @lg as ql,
+	isnull(@docs, '') as doc,
+	case
+	 when @part = 1 then '1' 
+	 else CONVERT(varchar(15), @part) 
+	end as qpart
+from WM_PETITION pet
+	join WM_APPEAL_NEW app on app.OUID = pet.OUID and app.A_STATUS = 10
+	join WM_PERSONAL_CARD pc on pc.OUID = app.A_PERSONCARD
+	left outer join SPR_FIO_SURNAME AS SURNAME on SURNAME.OUID = pc.SURNAME
+	left outer join SPR_FIO_NAME AS FIRSTNAME on FIRSTNAME.OUID = pc.A_NAME
+	left outer join SPR_FIO_SECONDNAME AS SECONDNAME on SECONDNAME.OUID = pc.A_SECONDNAME
+	left outer join WM_ADDRESS adr on adr.OUID = pc.A_REGFLAT and adr.A_STATUS = 10
+where pet.OUID = @pet
+
+
+--Вывод справок о праве.
+select spr.relativeFIO, spr.ser, spr.num, spr.relation, 
+    CASE WHEN s.REALTY_START_DATE = CONVERT(DATE, '30001231') THEN ''
+    ELSE CONVERT(VARCHAR, s.REALTY_START_DATE, 104) END AS date, --spr.date,
+	case
+	 when s.PART is null then ''
+	 when s.PART = 1 then '1' 
+	 else CONVERT(varchar(15), s.PART) 
+	end as part
+from #tmpspr spr
+	--left outer join #tmps s on s.A_OWNER_ID = spr.PERSONOUID
+	LEFT JOIN #REALTY_PART s ON s.PERSONOUID = spr.PERSONOUID
+order by 1
 
 
 --Вывод расчета компенсаций для отчета.
