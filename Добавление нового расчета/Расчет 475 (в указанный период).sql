@@ -28,9 +28,9 @@ DECLARE @minpetdate DATE
 --------------------------------------------------------------------------------------------
 
 --Входные параметры отчета.
-SET @pet = #objectID#                                                       --Заявление.
-SET @s1 = CONVERT(DATE, DATEADD("day", 1 - DAY(#beginDate#), #beginDate#))  --Начало отчетной недели. 
-SET @s2 = CONVERT(DATE, DATEADD("day", 1 - DAY(#endDate#), #endDate#))      --Конец отчетной недели.  
+SET @pet = 6346814                                                              --Заявление. #objectID#
+SET @s1 = CONVERT(DATE, DATEADD("day", 1 - DAY('01-01-2020'), '01-01-2020'))    --Начало отчетной недели.  #beginDate#
+SET @s2 = CONVERT(DATE, DATEADD("day", 1 - DAY('31-12-2020'), '31-12-2020'))    --Конец отчетной недели.  #endDate#
 
 
 --------------------------------------------------------------------------------------------
@@ -662,93 +662,121 @@ where rec.A_STATUS = 10 and rec.A_PAYER = @pcpetl and rec.A_ADDR_ID = @adrrl and
 
 
 --Вывод общей информации для отчета.
-select convert(char, app.A_DATE_REG, 104) as petitionDate,
-	rtrim(ISNULL(SURNAME.A_NAME, '') + ' ' + ISNULL(FIRSTNAME.A_NAME,'') + ' ' + ISNULL(SECONDNAME.A_NAME, '')) as FIO,
-	@phones as phone, adr.A_ADRTITLE as address,
-	convert(char, @d1, 104) as dateFrom, case when @d2 is not null then convert(char, @d2, 104) else '' end as dateTo,
-	@reg as qz, @lg as ql,
-	isnull(@docs, '') as doc,
-	case
-	 when @part = 1 then '1' 
-	 else CONVERT(varchar(15), @part) 
-	end as qpart
-from WM_PETITION pet
-	join WM_APPEAL_NEW app on app.OUID = pet.OUID and app.A_STATUS = 10
-	join WM_PERSONAL_CARD pc on pc.OUID = app.A_PERSONCARD
-	left outer join SPR_FIO_SURNAME AS SURNAME on SURNAME.OUID = pc.SURNAME
-	left outer join SPR_FIO_NAME AS FIRSTNAME on FIRSTNAME.OUID = pc.A_NAME
-	left outer join SPR_FIO_SECONDNAME AS SECONDNAME on SECONDNAME.OUID = pc.A_SECONDNAME
-	left outer join WM_ADDRESS adr on adr.OUID = pc.A_REGFLAT and adr.A_STATUS = 10
-where pet.OUID = @pet
+SELECT 
+    CONVERT(VARCHAR, appeal.A_DATE_REG, 104)                                       AS PETITION_DATE,
+	RTRIM(
+        ISNULL(personalCard.A_SURNAME_STR,    fioSurname.A_NAME)     + ' ' + 
+        ISNULL(personalCard.A_NAME_STR,       fioName.A_NAME)        + ' ' + 
+        ISNULL(personalCard.A_SECONDNAME_STR, fioSecondname.A_NAME) 
+	)                                                                               AS FIO,
+	@phones                                                                         AS PHONE, 
+	address.A_ADRTITLE                                                              AS ADDRESS,
+	CONVERT(VARCHAR, @d1, 104)                                                      AS DATE_FROM, 
+	ISNULL(CONVERT(VARCHAR, @d2, 104), '')                                          AS DATE_TO,
+	@reg                                                                            AS COUNT_PEOPLE, 
+	@lg                                                                             AS COUNT_BENIFICIARY,
+	ISNULL(@docs, '')                                                               AS DOCUMENT,
+    CASE
+        WHEN @part = 1 THEN '1' 
+        ELSE ISNULL(CONVERT(varchar(15), @part), '')
+    END                                                                             AS PART
+FROM WM_PETITION petition   --Заявление.
+    INNER JOIN WM_APPEAL_NEW appeal 
+        ON appeal.OUID = petition.OUID      --Связка с заявлением.
+            AND appeal.A_STATUS = 10        --Статус в БД "Действует".
+------Личное дело гражданина.
+	INNER JOIN WM_PERSONAL_CARD personalCard 
+	    ON personalCard.OUID = appeal.A_PERSONCARD --Связка с обращением.
+----Фамилия.
+    LEFT JOIN SPR_FIO_SURNAME fioSurname
+        ON fioSurname.OUID = personalCard.SURNAME --Связка с личным делом.
+----Имя.     
+    LEFT JOIN SPR_FIO_NAME fioName
+        ON fioName.OUID = personalCard.A_NAME --Связка с личным делом.      
+----Отчество.   
+    LEFT JOIN SPR_FIO_SECONDNAME fioSecondname
+        ON fioSecondname.OUID = personalCard.A_SECONDNAME --Связка с личным делом.   
+----Адрес. 
+	LEFT JOIN WM_ADDRESS address 
+	    ON address.OUID = personalCard.A_REGFLAT    --Связка с личным делом.
+	        AND address.A_STATUS = 10               --Статус в БД "Действует".
+WHERE petition.OUID = @pet --Заявление отчета.
+
+
+----------------------------------------------------------------------------------------
 
 
 --Вывод справок о праве.
-select spr.relativeFIO, spr.ser, spr.num, spr.relation, 
-    CASE WHEN s.REALTY_START_DATE = CONVERT(DATE, '30001231') THEN ''
-    ELSE CONVERT(VARCHAR, s.REALTY_START_DATE, 104) END AS date, --spr.date,
-	case
-	 when s.PART is null then ''
-	 when s.PART = 1 then '1' 
-	 else CONVERT(varchar(15), s.PART) 
-	end as part
-from #tmpspr spr
-	--left outer join #tmps s on s.A_OWNER_ID = spr.PERSONOUID
-	LEFT JOIN #REALTY_PART s ON s.PERSONOUID = spr.PERSONOUID
-order by 1
+SELECT
+    --Сведения о человеке. 
+    spr.relativeFIO                                                 AS FIO, 
+    spr.relation                                                    AS RELATION, 
+    --Последняя справка о праве.
+    spr.ser                                                         AS DOC_SERIES, 
+    spr.num                                                         AS DOC_NUMBER, 
+    spr.date                                                        AS DOC_BASE_DATE,
+    --Информация о собственности.
+    CASE
+        WHEN realtyPart.PART = 1 THEN '1'
+        ELSE ISNULL(CONVERT(VARCHAR, realtyPart.PART), '') 
+	END                                                             AS PART,
+    CONVERT(VARCHAR, realtyPart.REALTY_START_DATE, 104)             AS REALTY_START_DATE,
+    ISNULL(CONVERT(VARCHAR, realtyPart.REALTY_END_DATE, 104), '')   AS REALTY_END_DATE
+FROM #tmpspr spr
+	LEFT JOIN #REALTY_PART realtyPart ON realtyPart.PERSONOUID = spr.PERSONOUID
+ORDER BY realtyPart.REALTY_START_DATE
+
+
+----------------------------------------------------------------------------------------
 
 
 --Вывод расчета компенсаций для отчета.
 SELECT 
-    serviceName         AS serviceName, 
-    ServicePay          AS ServicePay, 
+    serviceName         AS SERVICE_NAME, 
+    ServicePay          AS PAY, 
   ------------------------------------------------------------------------------
     --Зарегестрировано.
     CASE OLD_CALCULATION
         --Старый расчет по долям.
-        WHEN 1 THEN 
-            CASE
-                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392) THEN CONVERT(VARCHAR(15), qz)
-                WHEN A_NAME_AMOUNT = 162 AND fls = 0 THEN CONVERT(VARCHAR(15), qz) --Содержание и ремонт жилого помещения.
-                ELSE '-'
-            END 
+        WHEN 1 THEN CASE
+            WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392) THEN CONVERT(VARCHAR(15), qz)
+            WHEN A_NAME_AMOUNT = 162 AND fls = 0 THEN CONVERT(VARCHAR(15), qz) --Содержание и ремонт жилого помещения.
+            ELSE '-'
+        END 
         --Новый расчет по количеству. 
-        ELSE       
-            CASE
-                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392, 162, 38) THEN CONVERT(VARCHAR(15), qz)
-                ELSE '-'
-	        END  
-    END AS qz,
+        ELSE CASE
+            WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392, 162, 38) THEN CONVERT(VARCHAR(15), qz)
+            ELSE '-'
+        END  
+    END AS COUNT_PEOPLE,
   ------------------------------------------------------------------------------
     --Льготники.
     CASE OLD_CALCULATION
         --Старый расчет по долям.
-        WHEN 1 THEN 
-            CASE
-                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392) THEN CONVERT(VARCHAR(15), ql)
-                WHEN A_NAME_AMOUNT = 162 AND fls = 0 THEN CONVERT(VARCHAR(15), ql) --Содержание и ремонт жилого помещения.
-                ELSE '-'
-            END
+        WHEN 1 THEN CASE
+            WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392) THEN CONVERT(VARCHAR(15), ql)
+            WHEN A_NAME_AMOUNT = 162 AND fls = 0 THEN CONVERT(VARCHAR(15), ql) --Содержание и ремонт жилого помещения.
+            ELSE '-'
+        END
         --Новый расчет по количеству. 
-        ELSE 
-            CASE
-                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392, 162, 38) THEN CONVERT(VARCHAR(15), ql)
-                ELSE '-'
-            END
-    END AS ql,
+        ELSE CASE
+            WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392, 162, 38) THEN CONVERT(VARCHAR(15), ql)
+            ELSE '-'
+        END
+    END AS COUNT_BENIFICIARY,
   ------------------------------------------------------------------------------
     --Доля.
     CASE OLD_CALCULATION
         --Старый расчет по долям.
-        WHEN 1 THEN 
-            CASE 
-                WHEN A_NAME_AMOUNT IN (162, 38) AND fls = 1 THEN part  --Содержание и ремонт жилого помещения или Капитальный ремонт.
-                ELSE '-' 
-            END
+        WHEN 1 THEN CASE 
+            WHEN A_NAME_AMOUNT IN (162, 38) AND fls = 1 THEN part  --Содержание и ремонт жилого помещения или Капитальный ремонт.
+            ELSE '-' 
+        END
         --Новый расчет по количеству.
         ELSE '-'
-    END AS part,
+    END AS PART,
   ------------------------------------------------------------------------------
-    ROUND(result, 2) AS result,
-    CONVERT(CHAR, PAYMENT_DATE, 104) AS pd
+    ROUND(result, 2) AS RESULT,
+    CONVERT(CHAR, PAYMENT_DATE, 104) AS PAYMENT_DATE
 FROM #tmpr
 ORDER BY PAYMENT_DATE, serviceName
