@@ -4,7 +4,7 @@
 --Удаление временных таблиц.
 IF OBJECT_ID('tempdb..#UPDATED_DOC')        IS NOT NULL BEGIN DROP TABLE #UPDATED_DOC       END --Обновляемые документы.
 IF OBJECT_ID('tempdb..#UPDATED_SOC_SERV')   IS NOT NULL BEGIN DROP TABLE #UPDATED_SOC_SERV  END --Обновляемые назначения на соц. обслуживание.
-IF OBJECT_ID('tempdb..#UPDATE_LOG')         IS NOT NULL BEGIN DROP TABLE #UPDATE_LOG        END --Журнал обновлений.
+IF OBJECT_ID('tempdb..#UPDATE_LOG')         IS NOT NULL BEGIN DROP TABLE #UPDATE_LOG        END --Журнал старых значений.
 
 
 --------------------------------------------------------------------------------------------------------------------------------
@@ -129,7 +129,7 @@ COMMIT
 ------------------------------------------------------------------------------------------------------------------------------
 
 
---Вывести изменения.
+--Вывести старые значения.
 SELECT * FROM #UPDATE_LOG
 
 
