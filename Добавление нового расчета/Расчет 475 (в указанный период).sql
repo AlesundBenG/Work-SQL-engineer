@@ -28,9 +28,9 @@ DECLARE @minpetdate DATE
 --------------------------------------------------------------------------------------------
 
 --Входные параметры отчета.
-SET @pet = #objectID#                                                              --Заявление.
+SET @pet = #objectID#                                                       --Заявление.
 SET @s1 = CONVERT(DATE, DATEADD(DAY, 1 - DAY(#beginDate#), #beginDate#))    --Начало отчетной недели. 
-SET @s2 = CONVERT(DATE, DATEADD(DAY, 1 - DAY(#endDate#), #endDate#))    --Конец отчетной недели. 
+SET @s2 = CONVERT(DATE, DATEADD(DAY, 1 - DAY(#endDate#), #endDate#))        --Конец отчетной недели. 
 
 
 --------------------------------------------------------------------------------------------
@@ -102,6 +102,7 @@ SELECT
 FROM WM_PCPHONE phone 
 WHERE phone.A_PERSCARD = @pcpet	--Заявитель отчета.
     AND phone.A_STATUS = 10     --Статус в БД "Действует".
+
 
 --------------------------------------------------------------------------------------------
 
@@ -321,161 +322,8 @@ SELECT @part = SUM(A_PART)
 FROM #tmps
 
 
-
---Конец рефакторинга.
---//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-/*----------------------------------------------------------
-/*Все заявления*/
-
-/*Заявления на назначения*/
-select pet.OUID, convert(date, app.A_DATE_REG) as A_DATE_REG, convert(date, dateadd("day", 1-DAY(app.A_DATE_REG), app.A_DATE_REG)) as d
-into #tmpf1
-from WM_PETITION pet
-	join WM_APPEAL_NEW app on app.OUID = pet.OUID and app.A_STATUS = 10
-	join ESRN_SERV_SERV ess on ess.A_REQUEST = pet.OUID and ess.A_STATUS = 10 and ess.A_SERV = 310
-where pet.A_STATUSPRIVELEGE = 13 and pet.A_PETITION_TYPE = 1 and pet.A_MSPHOLDER = @pcpetl
-
-SELECT * FROM #tmpf1
-
-/*Самое первое заявление (о назначении)*/
-select @minpet = t.OUID
-from #tmpf1 t
-	join 
-	(select MIN(A_DATE_REG) as A_DATE_REG
-	from #tmpf1) a on a.A_DATE_REG = t.A_DATE_REG
-
-/*Дата начала действия основания в "Справке о праве..." в самом первом заявлении*/
-select @minpetdate = CONVERT(date, doc.A_DOCBASESTARTDATE)
-from SPR_LINK_APPEAL_DOC ld
-	join WM_ACTDOCUMENTS doc on ld.TOID = doc.OUID and doc.A_STATUS = 10 and doc.DOCUMENTSTYPE in (1796, 2067, 3893, 3894) and doc.PERSONOUID = @pcpetl
-	join
-	 (select MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE
-	 from SPR_LINK_APPEAL_DOC ld1
-		  join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.DOCUMENTSTYPE in (1796, 2067, 3893, 3894) and doc1.PERSONOUID = @pcpetl
-	 where ld1.FROMID = @minpet) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE
-where ld.FROMID = @minpet
-
-
-select *
-into #tmppet
-from
-(
-select pet.OUID, convert(date, app.A_DATE_REG) as A_DATE_REG, convert(date, dateadd("day", 1-DAY(app.A_DATE_REG), app.A_DATE_REG)) as d
-from WM_PETITION pet
-	join WM_APPEAL_NEW app on app.OUID = pet.OUID and app.A_STATUS = 10
-	join ESRN_SERV_SERV ess on ess.OUID = pet.A_EXTEND_SERV_BASE and ess.A_STATUS = 10 and ess.A_SERV = 310
-where pet.A_EXTEND_SERV_BASE is not null and pet.A_STATUSPRIVELEGE = 13 and pet.A_PETITION_TYPE = 2 and pet.A_MSPHOLDER = @pcpetl
-union all
-select OUID,
-	   case
-	    when OUID = @minpet and @minpetdate is not null then @minpetdate
-	    else A_DATE_REG
-	   end as A_DATE_REG,
-	   case
-	    when OUID = @minpet and @minpetdate is not null then convert(date, dateadd("day", 1-DAY(@minpetdate), @minpetdate))
-	    else d
-	   end as d
-from #tmpf1
-) a
-
-
-select p1.ouid, p1.a_date_reg, p1.d,
-	DATEADD(MONTH, -1,
-	isnull(
-	(select min(p2.d)
-	from #tmppet p2
-	where p2.d > p1.d),
-	CONVERT(date, '29000101'))
-	) as d2
-into #tmppet1
-from #tmppet p1
-
-/*Зарегистрированные*/
-select doc.A_AMOUNT_PERSON as reg, pet.OUID, doc.A_AMOUNT_LGOT as lg
-into #tmppetreg
-from SPR_LINK_APPEAL_DOC ld 
-	join #tmppet1 pet on ld.FROMID = pet.OUID
-	join WM_ACTDOCUMENTS doc on ld.TOID = doc.OUID and doc.A_STATUS = 10 and doc.DOCUMENTSTYPE = 2091
-	join 
-	(select MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE, pet1.OUID
-	from SPR_LINK_APPEAL_DOC ld1 
-		join #tmppet1 pet1 on ld1.FROMID = pet1.OUID
-		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.DOCUMENTSTYPE = 2091
-	group by pet1.OUID) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE and md.OUID = pet.OUID
-
-/*Справки о праве*/
-select pet.OUID, doc.PERSONOUID, pet.d, pet.A_DATE_REG
-into #tmppetspr
-from SPR_LINK_APPEAL_DOC ld 
-	join #tmppet1 pet on ld.FROMID = pet.OUID
-	join WM_ACTDOCUMENTS doc on ld.TOID = doc.OUID and doc.A_STATUS = 10 and doc.DOCUMENTSTYPE in (1796, 2067, 3893, 3894)
-	join 
-	(select doc1.PERSONOUID, MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE, pet1.OUID
-	from SPR_LINK_APPEAL_DOC ld1 
-		join #tmppet1 pet1 on ld1.FROMID = pet1.OUID
-		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.DOCUMENTSTYPE in (1796, 2067, 3893, 3894)
-	group by pet1.OUID, doc1.PERSONOUID) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE and doc.PERSONOUID = md.PERSONOUID and md.OUID = pet.OUID
-
-/*Доли собственности*/
-select own.A_OUID, own.A_OWNER_ID, own.A_PART, l.OUID
-into #tmppets
-from WM_OWNING own
-	join #tmppetspr l on l.PERSONOUID = own.A_OWNER_ID and convert(date, own.A_START_OWN_DATE) <= l.d
-	join
-	(select own1.A_OWNER_ID, MAX(own1.A_START_OWN_DATE) as A_START_OWN_DATE, l1.OUID
-	 from WM_OWNING own1
-		join #tmppetspr l1 on l1.PERSONOUID = own1.A_OWNER_ID and convert(date, own1.A_START_OWN_DATE) <= l1.d
-	 where own1.A_ADDR_ID = @adrrl and own1.A_STATUS = 10
-		and (own1.A_START_OWN_DATE is null or CONVERT(date, own1.A_START_OWN_DATE) <= l1.A_DATE_REG)
-		and (own1.A_END_OWN_DATE is null or CONVERT(date, own1.A_END_OWN_DATE) >= l1.A_DATE_REG)
-	 group by own1.A_OWNER_ID, l1.OUID) mo on mo.A_OWNER_ID = own.A_OWNER_ID and mo.A_START_OWN_DATE = own.A_START_OWN_DATE and l.OUID = mo.OUID
-where own.A_ADDR_ID = @adrrl and own.A_STATUS = 10
-	and (own.A_START_OWN_DATE is null or CONVERT(date, own.A_START_OWN_DATE) <= l.A_DATE_REG)
-	and (own.A_END_OWN_DATE is null or CONVERT(date, own.A_END_OWN_DATE) >= l.A_DATE_REG)
-
-select ouid, SUM(A_PART) as part
-into #tmppetpart
-from #tmppets
-group by OUID
-
-
-/*Документ о владении*/
-select pprDoc.a_name as docs, pprDoc.A_CODE as docstype, pet.OUID
-into #tmppetdoc
-from SPR_LINK_APPEAL_DOC ld 
-	join #tmppet1 pet on ld.FROMID = pet.OUID
-	join WM_ACTDOCUMENTS doc on ld.TOID = doc.OUID and doc.A_STATUS = 10 and doc.PERSONOUID = @pcpetl
-	join PPR_DOC pprDoc ON pprDoc.A_ID = doc.DOCUMENTSTYPE and pprDoc.A_PARENT = 2090 and pprDoc.A_STATUS = 10
-	join 
-	(select MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE, pet1.OUID
-	from SPR_LINK_APPEAL_DOC ld1 
-		join #tmppet1 pet1 on ld1.FROMID = pet1.OUID
-		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.PERSONOUID = @pcpetl
-		join PPR_DOC pprDoc1 ON pprDoc1.A_ID = doc1.DOCUMENTSTYPE and pprDoc1.A_PARENT = 2090 and pprDoc1.A_STATUS = 10
-	group by pet1.OUID) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE and md.OUID = pet.ouid
-
-
-/*Данные для расчета*/
-select p.OUID, p.A_DATE_REG, p.d, p.d2, isnull(r.reg, r.lg) as reg, r.lg,
-	case when doc.docs is not null and doc.docstype in ('naim', 'specNaim', 'contractSocialHire') then 0 else 1 end as fls,
-	case
-	 when doc.docs is not null and doc.docstype in ('naim', 'specNaim', 'contractSocialHire') then 1
-	 when isnull(part.part, 0) = 0 then 1
-	 else part.part 
-	end as part
-into #tmppet2
-from #tmppet1 p
-	left outer join #tmppetreg r on r.OUID = p.OUID
---	left outer join #tmppetlg l on l.OUID = p.OUID
-	left outer join #tmppetpart part on part.OUID = p.OUID
-	left outer join #tmppetdoc doc on doc.OUID = p.OUID
-*/
-
-
 --------------------------------------------------------------------------------------------------------------------------------
-/*Посредник получения долей.*/
+
 
 --Личное дело заявителя.
 DECLARE @personalCardId INT
@@ -726,7 +574,7 @@ SELECT
     ISNULL(CONVERT(VARCHAR, realtyPart.REALTY_END_DATE, 104), '')   AS REALTY_END_DATE
 FROM #tmpspr spr
 	LEFT JOIN #REALTY_PART realtyPart ON realtyPart.PERSONOUID = spr.PERSONOUID
---ORDER BY 1
+ORDER BY realtyPart.REALTY_START_DATE
 
 
 ----------------------------------------------------------------------------------------
