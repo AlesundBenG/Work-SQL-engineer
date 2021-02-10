@@ -48,10 +48,10 @@ SELECT
             ELSE 0                                                              --В этом месяце день рождения, и он уже был.
         END	AS AGE,
     CASE
-        WHEN MONTH(personalCard.BIRTHDATE) < MONTH(@dateForAge)																--Месяц даты рождения уже прошел.
+        WHEN MONTH(personalCard.BIRTHDATE) < MONTH(@dateForAge)                                                             --Месяц даты рождения уже прошел.
             OR (MONTH(personalCard.BIRTHDATE) = MONTH(@dateForAge) AND DAY(personalCard.BIRTHDATE) <= DAY(@dateForAge))	    --Или в текущем месяце день рождения уже прошел.
-        THEN DATEADD(YEAR, DATEDIFF(YEAR, personalCard.BIRTHDATE, @dateForAge) + 1, personalCard.BIRTHDATE)					--То следующий день рождения будет в следующем году.
-        ELSE DATEADD(YEAR, DATEDIFF(YEAR, personalCard.BIRTHDATE, @dateForAge), personalCard.BIRTHDATE)						--Иначе день рождения будет в этом году.
+        THEN DATEADD(YEAR, DATEDIFF(YEAR, personalCard.BIRTHDATE, @dateForAge) + 1, personalCard.BIRTHDATE)                 --То следующий день рождения будет в следующем году.
+        ELSE DATEADD(YEAR, DATEDIFF(YEAR, personalCard.BIRTHDATE, @dateForAge), personalCard.BIRTHDATE)                     --Иначе день рождения будет в этом году.
     END AS NEXT_BIRTHDATE
 FROM WM_PERSONAL_CARD personalCard --Личное дело.
 
