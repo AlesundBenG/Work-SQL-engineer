@@ -1,6 +1,5 @@
 --------------------------------------------------------------------------------------------------------------------------------
 
-
 --Дата запуска скрипта (закрытия старого тарифа и открытие нового).
 DECLARE @dateLaunch DATETIME
 SET @dateLaunch = GETDATE()
@@ -20,6 +19,7 @@ SET @dateAcceptance = CONVERT(DATE, '15-12-2020')
 --Создатель.
 DECLARE @creator INT
 SET @creator = 10314303 --Системный администратор.
+
 
 
 --------------------------------------------------------------------------------------------------------------------------------
@@ -94,9 +94,9 @@ FROM (
                 AND newData.DISTRICT = tarif.A_DISTRICT --Связка по области распространения.
     WHERE tarif.A_STATUS = 10 --Статус в БД "Действует".
 ) t
-WHERE t.gnum = 1                        --Последний тариф.
-    AND t.TARIF_END_DATE IS NULL        --Нет даты окончания (Не закрыт тариф).
-    AND t.TARIF_START_DATE < GETDATE()  --Дата начала не в будущем.
+WHERE t.gnum = 1                        	--Последний тариф.
+    AND t.TARIF_END_DATE IS NULL        	--Нет даты окончания (Не закрыт тариф).
+    AND t.TARIF_START_DATE < @endDateOldTarif	--Дата начала не в будущем.
     
 
 --------------------------------------------------------------------------------------------------------------------------------
@@ -144,8 +144,7 @@ FROM #OLD_DATA oldData
 
 --Закрытие старых тарифов.
 UPDATE tarif
-SET tarif.A_FIN_DATE = @endDateOldTarif,
-    tarif.A_TS = @dateLaunch
+SET tarif.A_FIN_DATE = @endDateOldTarif
 OUTPUT inserted.A_OUID, deleted.A_FIN_DATE INTO #UPDATED_DATA(TARIF_OUID, FIN_DATE_OLD) --Сохранение старого значения.
 FROM SPR_REG_SOC_SERV_PERIOD_2018 tarif
 WHERE tarif.A_OUID IN (SELECT TARIF_OUID FROM #OLD_DATA)
