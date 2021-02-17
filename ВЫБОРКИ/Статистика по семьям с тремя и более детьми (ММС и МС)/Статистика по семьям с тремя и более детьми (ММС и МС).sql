@@ -38,7 +38,6 @@ CREATE TABLE #TABLE_AGE (
 CREATE TABLE #RELATIONSHIP (
     PERSONOUID_1        INT,    --Личное дело.
     PERSONOUID_2        INT,    --Личное дело родственника.
-    RELATIONSHIP_TYPE   INT,    --Родсвтенная связь.
 )
 CREATE TABLE #MANY_CHILD_FAMILY (
     PERSONOUID              INT,    --Идентификатор личного дела родителя.  
@@ -105,11 +104,10 @@ FROM WM_PERSONAL_CARD personalCard --Личное дело.
 
 
 --Выборка родственных связей людей.
-INSERT INTO #RELATIONSHIP (PERSONOUID_1, PERSONOUID_2, RELATIONSHIP_TYPE)
+INSERT INTO #RELATIONSHIP (PERSONOUID_1, PERSONOUID_2)
 SELECT 
-    relationships.A_ID1                     AS PERSONOUID_1,
-    relationships.A_ID2                     AS PERSONOUID_2,
-    relationships.A_RELATED_RELATIONSHIP    AS RELATIONSHIP_TYPE
+    relationships.A_ID1 AS PERSONOUID_1,
+    relationships.A_ID2 AS PERSONOUID_2
 FROM WM_RELATEDRELATIONSHIPS relationships --Родственные связи.
 ----Личное дело родственника.
     INNER JOIN WM_PERSONAL_CARD personalCardChild
@@ -230,27 +228,6 @@ UPDATE family
 SET family.COUNT_DEATH_CHILD = 0
 FROM #MANY_CHILD_FAMILY family --Семьи, имеющие 3 и более детей.
 WHERE COUNT_DEATH_CHILD IS NULL
-
---Выбираем супруга/супруги, если по какой-то причине у него/нее не указаны дети.
-INSERT INTO #MANY_CHILD_FAMILY (PERSONOUID, COUNT_CHILD, COUNT_BORN_CHILD, COUNT_GROWN_UP_CHILD, COUNT_DEATH_CHILD)
-SELECT 
-    relationships.A_ID2         AS PERSONOUID,
-    family.COUNT_CHILD          AS COUNT_CHILD,
-    family.COUNT_BORN_CHILD     AS COUNT_BORN_CHILD,
-    family.COUNT_GROWN_UP_CHILD AS COUNT_GROWN_UP_CHILD,
-    family.COUNT_DEATH_CHILD    AS COUNT_DEATH_CHILD
-FROM #MANY_CHILD_FAMILY family --Многодетная семья.
-----Родственные связи.
-    INNER JOIN WM_RELATEDRELATIONSHIPS relationships
-        ON relationships.A_ID1 = family.PERSONOUID              --Связка с многодетной семьей.
-            AND relationships.A_STATUS = 10                     --Статус в БД "Действует".
-            AND relationships.A_RELATED_RELATIONSHIP IN (8, 9)  --Муж, Жена.
-WHERE relationships.A_ID2 NOT IN (  --Супруга/Супруги нет в списке многодетных.
-    SELECT 
-        PERSONOUID 
-    FROM #MANY_CHILD_FAMILY 
-    WHERE PERSONOUID IS NOT NULL
-) 
 
 
 ------------------------------------------------------------------------------------------------------------------------------    
@@ -445,6 +422,74 @@ WHERE t.gnum = 1
 ------------------------------------------------------------------------------------------------------------------------------
 
 
+--Выбираем супруга/супруги, если по какой-то причине у него/нее не указаны дети.
+INSERT INTO #MANY_CHILD_FAMILY (PERSONOUID, COUNT_CHILD, COUNT_BORN_CHILD, COUNT_GROWN_UP_CHILD, COUNT_DEATH_CHILD)
+SELECT 
+    relationships.A_ID2         AS PERSONOUID,
+    family.COUNT_CHILD          AS COUNT_CHILD,
+    family.COUNT_BORN_CHILD     AS COUNT_BORN_CHILD,
+    family.COUNT_GROWN_UP_CHILD AS COUNT_GROWN_UP_CHILD,
+    family.COUNT_DEATH_CHILD    AS COUNT_DEATH_CHILD
+FROM #MANY_CHILD_FAMILY family --Многодетная семья.
+----Родственные связи.
+    INNER JOIN WM_RELATEDRELATIONSHIPS relationships
+        ON relationships.A_ID1 = family.PERSONOUID              --Связка с многодетной семьей.
+            AND relationships.A_STATUS = 10                     --Статус в БД "Действует".
+            AND relationships.A_RELATED_RELATIONSHIP IN (8, 9)  --Муж, Жена.
+WHERE relationships.A_ID2 NOT IN (  --Супруга/Супруги нет в списке многодетных.
+    SELECT 
+        PERSONOUID 
+    FROM #MANY_CHILD_FAMILY 
+    WHERE PERSONOUID IS NOT NULL
+) 
+
+--Выбираем супруга/супруги, если по какой-то причине у него/нее не указаны дети.
+INSERT INTO #WHO_BECAME_MANY_CHILD_FAMILY(PERSONOUID, START_DATE, TYPE_START_DATE)
+SELECT 
+    relationships.A_ID2             AS PERSONOUID,
+    becameManyChild.START_DATE      AS START_DATE,
+    becameManyChild.TYPE_START_DATE AS TYPE_START_DATE
+FROM #MANY_CHILD_FAMILY family --Многодетная семья.
+----Родственные связи.
+    INNER JOIN WM_RELATEDRELATIONSHIPS relationships
+        ON relationships.A_ID1 = family.PERSONOUID              --Связка с многодетной семьей.
+            AND relationships.A_STATUS = 10                     --Статус в БД "Действует".
+            AND relationships.A_RELATED_RELATIONSHIP IN (8, 9)  --Муж, Жена.
+    INNER JOIN #WHO_BECAME_MANY_CHILD_FAMILY becameManyChild
+        ON becameManyChild.PERSONOUID = family.PERSONOUID
+WHERE relationships.A_ID2 NOT IN (  --Супруга/Супруги нет в списке многодетных.
+    SELECT 
+        PERSONOUID 
+    FROM #WHO_BECAME_MANY_CHILD_FAMILY 
+    WHERE PERSONOUID IS NOT NULL
+) 
+
+--Выбираем супруга/супруги, если по какой-то причине у него/нее не указаны дети.
+INSERT INTO #WHO_STOPPED_MANY_CHILD_FAMILY (PERSONOUID, STOP_DATE, TYPE_STOP_DATE)
+SELECT 
+    relationships.A_ID2             AS PERSONOUID,
+    stoppedManyChild.STOP_DATE      AS STOP_DATE,
+    stoppedManyChild.TYPE_STOP_DATE AS TYPE_STOP_DATE
+FROM #MANY_CHILD_FAMILY family --Многодетная семья.
+----Родственные связи.
+    INNER JOIN WM_RELATEDRELATIONSHIPS relationships
+        ON relationships.A_ID1 = family.PERSONOUID              --Связка с многодетной семьей.
+            AND relationships.A_STATUS = 10                     --Статус в БД "Действует".
+            AND relationships.A_RELATED_RELATIONSHIP IN (8, 9)  --Муж, Жена.
+    INNER JOIN #WHO_STOPPED_MANY_CHILD_FAMILY stoppedManyChild
+        ON stoppedManyChild.PERSONOUID = family.PERSONOUID
+WHERE relationships.A_ID2 NOT IN (  --Супруга/Супруги нет в списке многодетных.
+    SELECT 
+        PERSONOUID 
+    FROM #WHO_STOPPED_MANY_CHILD_FAMILY 
+    WHERE PERSONOUID IS NOT NULL
+) 
+
+
+------------------------------------------------------------------------------------------------------------------------------
+
+
+--Финальная выборка.
 SELECT 
     CASE
         WHEN EXISTS(
@@ -490,16 +535,6 @@ SELECT
         WHEN 2 THEN 'По фактической смерти'
         ELSE ''
     END                                                                                         AS [Причина окончания]
-    
-    --CASE becameManyChildFamily.TYPE_START_DATE
-    --    WHEN 0 THEN ISNULL(CONVERT(VARCHAR, becameManyChildFamily.START_DATE, 104), '') + ' (0)'
-    --    WHEN 1 THEN ISNULL(CONVERT(VARCHAR, becameManyChildFamily.START_DATE, 104), '') + ' (1)'
-    --END                                                                                         AS [Дата начала признания многодетной семьей, в случае рождения ребенка в течение 2020 года],
-    --CASE stoppedManyChildFamily.TYPE_STOP_DATE
-    --    WHEN 0 THEN ISNULL(CONVERT(VARCHAR, stoppedManyChildFamily.STOP_DATE, 104), '') + ' (0)'
-    --    WHEN 1 THEN ISNULL(CONVERT(VARCHAR, stoppedManyChildFamily.STOP_DATE, 104), '') + ' (1)'
-    --    WHEN 2 THEN ISNULL(CONVERT(VARCHAR, stoppedManyChildFamily.STOP_DATE, 104), '') + ' (2)'
-    --END                                                                                         AS [Дата окончания признания многодетной семьи, в случае исполнения ребенку совершеннолетия в течение 2020 года]
 FROM #MANY_CHILD_FAMILY family
 ----Личное дело гражданина.
     INNER JOIN WM_PERSONAL_CARD personalCard 
