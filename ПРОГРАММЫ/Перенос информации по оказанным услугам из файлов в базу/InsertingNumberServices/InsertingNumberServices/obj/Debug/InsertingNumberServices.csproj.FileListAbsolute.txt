@@ -1,0 +1,10 @@
+C:\Users\bnl\source\repos\InsertingNumberServices\InsertingNumberServices\bin\Debug\InsertingNumberServices.exe.config
+C:\Users\bnl\source\repos\InsertingNumberServices\InsertingNumberServices\bin\Debug\InsertingNumberServices.exe
+C:\Users\bnl\source\repos\InsertingNumberServices\InsertingNumberServices\bin\Debug\InsertingNumberServices.pdb
+C:\Users\bnl\source\repos\InsertingNumberServices\InsertingNumberServices\obj\Debug\InsertingNumberServices.csprojAssemblyReference.cache
+C:\Users\bnl\source\repos\InsertingNumberServices\InsertingNumberServices\obj\Debug\InsertingNumberServices.MainForm.resources
+C:\Users\bnl\source\repos\InsertingNumberServices\InsertingNumberServices\obj\Debug\InsertingNumberServices.Properties.Resources.resources
+C:\Users\bnl\source\repos\InsertingNumberServices\InsertingNumberServices\obj\Debug\InsertingNumberServices.csproj.GenerateResource.cache
+C:\Users\bnl\source\repos\InsertingNumberServices\InsertingNumberServices\obj\Debug\InsertingNumberServices.csproj.CoreCompileInputs.cache
+C:\Users\bnl\source\repos\InsertingNumberServices\InsertingNumberServices\obj\Debug\InsertingNumberServices.exe
+C:\Users\bnl\source\repos\InsertingNumberServices\InsertingNumberServices\obj\Debug\InsertingNumberServices.pdb
