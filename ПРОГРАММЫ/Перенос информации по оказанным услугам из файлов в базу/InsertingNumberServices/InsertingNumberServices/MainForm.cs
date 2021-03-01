@@ -12,8 +12,14 @@ namespace InsertingNumberServices
 {
     public partial class MainForm : Form
     {
+        /// <summary>
+        /// Инициализация формы.
+        /// </summary>
         public MainForm() {
             InitializeComponent();
+
+            ReaderDataBase reader = new ReaderDataBase();
+            bool successConnect  = reader.connectDataBase("172.19.142.236", "gorod111", "kIr0v1", "esrn");
         }
 
 
@@ -29,34 +35,5 @@ namespace InsertingNumberServices
                 tabControl.SelectedIndex = 1;   //Перемещаемся на следующую вкладку.
             }            
         }
-
-
-
-        /*
-//Чтение листов.
-string[,] sheet1 = reader.getSheet(0);
-string[,] sheet2 = reader.getSheet(1);
-//Добавлнеие столбцов.
-for (int i = 0; i < sheet1.GetLength(1); i++) {
-    dataGridViewSheet1.Columns.Add(i.ToString(), i.ToString());
-}
-for (int i = 0; i < sheet2.GetLength(1); i++) {
-    dataGridViewSheet2.Columns.Add(i.ToString(), i.ToString());
-}
-//Добавление строк.
-dataGridViewSheet1.Rows.Add(sheet1.GetLength(0));
-dataGridViewSheet2.Rows.Add(sheet2.GetLength(0));
-//Отображение содержимого страниц.
-for (int i = 0; i < sheet1.GetLength(0); i++) {
-    for (int j = 0; j < sheet1.GetLength(1); j++) {
-        dataGridViewSheet1.Rows[i].Cells[j].Value = sheet1[i, j];
-    }
-}
-for (int i = 0; i < sheet2.GetLength(0); i++) {
-    for (int j = 0; j < sheet2.GetLength(1); j++) {
-        dataGridViewSheet2.Rows[i].Cells[j].Value = sheet2[i, j];
-    }
-}
-*/
     }
 }
