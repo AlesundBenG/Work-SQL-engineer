@@ -1,0 +1,10 @@
+SELECT 
+    <Поля подзапроса без gnum>
+FROM (
+    SELECT 
+        <Поля подзапроса>,							
+        ROW_NUMBER() OVER (PARTITION BY <поля для группировки> ORDER BY <поля для сортировки> INC) AS gnum 
+	FROM 
+	    <Все остальное>
+) t
+WHERE t.gnum = <порядковый номер записей>
