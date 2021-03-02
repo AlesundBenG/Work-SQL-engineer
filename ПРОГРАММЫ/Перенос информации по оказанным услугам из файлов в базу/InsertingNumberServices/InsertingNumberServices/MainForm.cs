@@ -18,8 +18,6 @@ namespace InsertingNumberServices
         public MainForm() {
             InitializeComponent();
 
-            ReaderDataBase reader = new ReaderDataBase();
-            bool successConnect  = reader.connectDataBase("172.19.142.236", "gorod111", "kIr0v1", "esrn");
         }
 
 
