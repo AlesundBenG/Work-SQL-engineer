@@ -13,27 +13,7 @@ namespace InsertingNumberServices
     /// </summary>
     public class ReaderXLS
     {
-        /////////////////////////////////Структуры/////////////////////////////////
-
-
-        /// <summary>
-        /// Размер листа.
-        /// </summary>
-        private struct SizeSheet
-        {
-            /// <summary>
-            /// Количество строк.
-            /// </summary>
-            public int nRow;
-            /// <summary>
-            /// Количество столбцов.
-            /// </summary>
-            public int nColumn;
-        }
-
-
         /////////////////////////////////Параметры/////////////////////////////////
-
 
         /// <summary>
         /// Путь к файлу.
@@ -43,7 +23,6 @@ namespace InsertingNumberServices
         /// Страницы файла.
         /// </summary>
         private List<string[,]> _sheetsFile;
-
 
         /////////////////////////////////Свойства/////////////////////////////////
 
@@ -68,9 +47,7 @@ namespace InsertingNumberServices
             }
         }
 
-
         /////////////////////////////////Public методы/////////////////////////////////
-
 
         /// <summary>
         /// Конструктор.
@@ -91,17 +68,24 @@ namespace InsertingNumberServices
             //Список листов.
             _sheetsFile = new List<string[,]>();
             //Чтение листов.
-            for (int i = 1; i <= workBook.Sheets.Count; i++) {
+            for (int iSheet = 1; iSheet <= workBook.Sheets.Count; iSheet++) {
                 //Класс работы с листами.
-                Worksheet workSheet = (Worksheet)workBook.Sheets[i];
-                //Размер листа.
-                SizeSheet sizeSheet = getSizeSheets(workSheet);
-                //Значения листа.
-                string[,] sheet = new string[sizeSheet.nRow, sizeSheet.nColumn];
-                //Считывание листа.
-                for (int row = 0; row < sizeSheet.nRow; row++) {
-                    for (int column = 0; column < sizeSheet.nColumn; column++) {
-                        sheet[row, column] = workSheet.Cells[row + 1, column + 1].Text.ToString();
+                Worksheet workSheet = (Worksheet)workBook.Sheets[iSheet];
+                //Последняя заполненная строка в столбце А.
+                int iLastRow = workSheet.Cells[workSheet.Rows.Count, "A"].End[XlDirection.xlUp].Row;
+                //Чтение данных с листа.
+                var arrData = (object[,])workSheet.Range["A1:J" + iLastRow].Value; 
+                //Преобразование данных в строку.
+                string[,] sheet = new string[arrData.GetLength(0), arrData.GetLength(1)];
+                for (int i = 1; i < sheet.GetLength(0); i++) {
+                    for (int j = 1; j < sheet.GetLength(1); j++) {
+                        if (arrData[i, j] != null) {
+                            sheet[i - 1, j - 1] = arrData[i, j].ToString();
+                        }
+                        else {
+                            sheet[i - 1, j - 1] = "";
+                        }
+
                     }
                 }
                 //Добавление листа в список листов.
@@ -121,58 +105,6 @@ namespace InsertingNumberServices
         public string[,] getSheet(int sheetNumber) {
             //Возвращение результата.
             return _sheetsFile[sheetNumber];
-        }
-
-
-        /////////////////////////////////Private методы/////////////////////////////////
-
-
-        /// <summary>
-        /// Получить размер листа.
-        /// </summary>
-        /// <param name="workSheet">Класс работы с листами</param>
-        /// <returns></returns>
-        private SizeSheet getSizeSheets(Worksheet workSheet) {
-            int row = 0;                            //Рассматриваемая строка.
-            int column = 0;                         //Рассматриваемый столбец.
-            int maxIndexColumnNotEmptyCell = -1;    //Максимальный индекс столбца не пустой ячейки.
-            int maxIndexRowNotEmptyCell = -1;       //Максимальный индекс строки не пустой ячейки.
-            int currentCountEmptyRow = 0;           //Количество подряд идущих пустых строк.
-            int currentCountEmptyColumn = 0;        //Количество подряд идущих пустых строк.
-            bool rowCompletelyEmpty = false;        //Флаг пустой строки.
-            //Обход по строкам.
-            while (currentCountEmptyRow <= 3) {
-                column = 0;                         //Переходим к первому столбцу.
-                currentCountEmptyColumn = 0;        //Сбрасываем счетчик пустых столбцов.
-                rowCompletelyEmpty = true;          //Заведомо считаем строку пустой.
-                //Обход по столбцам.
-                while (currentCountEmptyColumn <= 3) {
-                    if (workSheet.Cells[row + 1, column + 1].Text.ToString() == "") {
-                        currentCountEmptyColumn++;      //Счет пустых столбцов в строке.
-                    }
-                    else {
-                        currentCountEmptyColumn = 0;    //Сброс счетчика пустых столбцов в строке.
-                        rowCompletelyEmpty = false;     //Сброс флага пустой строки, если столбец не пустой.
-                        if (maxIndexColumnNotEmptyCell < column) {
-                            maxIndexColumnNotEmptyCell = column;    //Фиксация максимального индекса не пустого столбца.
-                        }
-                    }
-                    column++;   //Переход на следующий солбец.
-                }
-                if (rowCompletelyEmpty) {
-                    currentCountEmptyRow++; //Счет пустых строк.
-                }
-                else {
-                    currentCountEmptyRow = 0;       //Сброс пустых строк.
-                    maxIndexRowNotEmptyCell = row;  //Фиксация максимального индекса не пустой строки.
-                }
-                row++;  //Переход к следующей строке.
-            }
-            //Результат.
-            return new SizeSheet {
-                nRow = maxIndexRowNotEmptyCell + 1,
-                nColumn = maxIndexColumnNotEmptyCell + 1
-            };
         }
     }
 }

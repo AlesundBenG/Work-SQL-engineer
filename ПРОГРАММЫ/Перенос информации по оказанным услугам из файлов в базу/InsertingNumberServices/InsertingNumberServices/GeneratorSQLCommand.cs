@@ -8,31 +8,26 @@ using System.Threading.Tasks;
 namespace InsertingNumberServices
 {
     /// <summary>
+    /// Входной параметр для запроса.
+    /// </summary>
+    public struct InputParametrs
+    {
+        /// <summary>
+        /// Код параметра.
+        /// </summary>
+        public string code;
+        /// <summary>
+        /// Значение параметра.
+        /// </summary>
+        public string value;
+    }
+
+    /// <summary>
     /// Класс для формирования SQL запросов.
     /// </summary>
     public static class GeneratorSQLCommand
     {
-        /////////////////////////////////Структуры/////////////////////////////////
-
-
-        /// <summary>
-        /// Входной параметр для запроса.
-        /// </summary>
-        public struct InputParametrs
-        {
-            /// <summary>
-            /// Код параметра.
-            /// </summary>
-            public string code;
-            /// <summary>
-            /// Значение параметра.
-            /// </summary>
-            public string value;
-        }
-
-
         /////////////////////////////////Public методы/////////////////////////////////
-
 
         /// <summary>
         /// Генерация SQl запроса из скрипта.
@@ -44,20 +39,18 @@ namespace InsertingNumberServices
             string command = "";
             //Чтение из файла.
             using (FileStream filestream = File.OpenRead(pathScript)) {
-                //Преобразуем строку в байты
+                //Преобразование строки в байты.
                 byte[] array = new byte[filestream.Length];
-                // считываем данные.
+                //Считывание данных.
                 filestream.Read(array, 0, array.Length);
-                //Декодируем байты в строку.
+                //Декодирование байт в строку.
                 command = Encoding.UTF8.GetString(array);
             }
             //Вставка значений.
             return insertParametrs(command, parametrs); ;
         }
 
-
         /////////////////////////////////Private методы/////////////////////////////////
-
 
         /// <summary>
         /// Вставка значений параметров.
