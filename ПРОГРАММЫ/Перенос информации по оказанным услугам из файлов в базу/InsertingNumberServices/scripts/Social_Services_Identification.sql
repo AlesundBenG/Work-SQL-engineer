@@ -1,49 +1,58 @@
 -------------------------------------------------------------------------------------------------------------------------------
-
---Фамилия.
-DECLARE @personOUID INT
-SET @personOUID = #personOUID# 
-
-
+--РџРµСЂРёРѕРґ, Р·Р° РєРѕС‚РѕСЂС‹Р№ РїСЂРµРґРѕСЃС‚Р°РІР»СЏСЋС‚СЃСЏ СЃРІРµРґРµРЅРёСЏ.
+DECLARE @yearReport INT SET @yearReport = #yearReport#
+DECLARE @monthReport INT SET @monthReport = (SELECT A_CODE FROM SPR_MONTH WHERE A_NAME = '#monthReport#' OR CONVERT(VARCHAR, A_CODE) = '#monthReport#')
+--Р”Р°РЅРЅС‹Рµ РѕР± РёРЅРґРёРІРёРґСѓР°Р»СЊРЅРѕР№ РїСЂРѕРіСЂР°РјРјРµ РїРѕР»СѓС‡Р°С‚РµР»СЏ СЃРѕС†РёР°Р»СЊРЅС‹С… СѓСЃР»СѓРі (РРџРџРЎРЈ).
+DECLARE @dateRegistration VARCHAR(256) SET @dateRegistration = '#dateRegistration#' --Р”Р°С‚Р° РѕС„РѕСЂРјР»РµРЅРёСЏ.
+DECLARE @numberDocument VARCHAR(256) SET @numberDocument = '#numberDocument#' --РќРѕРјРµСЂ РґРѕРєСѓРјРµРЅС‚Р°.
+DECLARE @formSocServ VARCHAR(256) SET @formSocServ = '#formSocServ#' --Р¤РѕСЂРјР° СЃРѕС†РёР°Р»СЊРЅРѕРіРѕ РѕР±СЃР»СѓР¶РёРІР°РЅРёСЏ.
 -------------------------------------------------------------------------------------------------------------------------------
-
-
---Выбор назначений на социальной обслуживание.
+--Р’С‹Р±РѕСЂ РЅР°Р·РЅР°С‡РµРЅРёР№ РЅР° СЃРѕС†РёР°Р»СЊРЅРѕР№ РѕР±СЃР»СѓР¶РёРІР°РЅРёРµ.
 SELECT 
-    socServ.OUID                        AS SOC_SERV_OUID,
-    personalCard.A_TITLE                AS PERSONAL_CARD_TITLE,
-    socServ.A_DEGREE                    AS DEGREE,
-    typeServ.A_NAME                     AS SOC_SERV_TYPE,
-    organization.A_NAME1                AS ORGANIZATION,
-    departament.A_NAME1                 AS DEPARTAMENT,
-    CONVERT(DATE, period.STARTDATE)     AS SOC_SERV_START_DATE,
-    CONVERT(DATE, period.A_LASTDATE)    AS SOC_SERV_END_DATE, 
-    statusServ.A_NAME                   AS SOC_SERV_STATUS
-FROM ESRN_SOC_SERV socServ --Назначение социального обслуживания.
-----Статус назначения.
-    INNER JOIN SPR_STATUS_PROCESS statusServ 
-        ON statusServ.A_ID = socServ.A_STATUSPRIVELEGE	--Связка с назначением.	
-----Органы социальной защиты.
-    INNER JOIN SPR_ORG_BASE organization
-        ON organization.OUID = socServ.A_ORGNAME --Связка с назначением.
-----Департамент.
-    INNER JOIN SPR_ORG_BASE departament
-        ON departament.OUID = socServ.A_DEPNAME --Связка с назначением.     
-----Период предоставления МСП.        
-    INNER JOIN SPR_SOCSERV_PERIOD period
-        ON period.A_STATUS = 10                 --Статус в БД "Действует".
-            AND period.A_SERV = socServ.OUID    --Связка с назначением.   
-----Нормативно правовой документ.
-    INNER JOIN SPR_NPD_MSP_CAT NPD
-        ON NPD.A_ID = socServ.A_SERV --Связка с назначением.
-----Наименование МСП.	
-    INNER JOIN PPR_SERV typeServ 
-        ON typeServ.A_ID = NPD.A_MSP --Связка с нормативно правовым документом.
-----Личное дело льготодержателя.
-    INNER JOIN WM_PERSONAL_CARD personalCard
-        ON personalCard.OUID = socServ.A_PERSONOUID --Связка с назначением.
-WHERE socServ.A_STATUS = 10 --Статус назначения в БД "Действует".
-    AND socServ.A_PERSONOUID = @personOUID 
-   
-
+ socServ.OUID AS SOC_SERV_OUID,
+ personalCard.OUID AS PERSONAL_CARD_OUID,
+ personalCard.A_TITLE AS PERSONAL_CARD_TITLE,
+ formSocServ.A_NAME AS SOC_SERV_FORM,
+ organization.A_NAME1 AS ORGANIZATION,
+ departament.A_NAME1 AS DEPARTAMENT,
+ CONVERT(VARCHAR, period.STARTDATE) AS SOC_SERV_START_DATE,
+ CONVERT(VARCHAR, period.A_LASTDATE) AS SOC_SERV_END_DATE, 
+ statusServ.A_NAME AS SOC_SERV_STATUS
+FROM ESRN_SOC_SERV socServ --РќР°Р·РЅР°С‡РµРЅРёРµ СЃРѕС†РёР°Р»СЊРЅРѕРіРѕ РѕР±СЃР»СѓР¶РёРІР°РЅРёСЏ.
+----РџРµСЂРёРѕРґ РїСЂРµРґРѕСЃС‚Р°РІР»РµРЅРёСЏ РњРЎРџ.        
+ INNER JOIN SPR_SOCSERV_PERIOD period
+  ON period.A_STATUS = 10 --РЎС‚Р°С‚СѓСЃ РІ Р‘Р” "Р”РµР№СЃС‚РІСѓРµС‚".
+   AND period.A_SERV = socServ.OUID --РЎРІСЏР·РєР° СЃ РЅР°Р·РЅР°С‡РµРЅРёРµРј.   
+   AND @yearReport BETWEEN YEAR(period.STARTDATE) AND YEAR(period.A_LASTDATE) --Р“РѕРґ РѕС‚С‡РµС‚Р° РІС…РѕРґРёС‚ РІ РїРµСЂРёРѕРґ РґРµР№СЃС‚РІРёСЏ РЅР°Р·РЅР°С‡РµРЅРёСЏ.
+   AND (@yearReport <> YEAR(period.STARTDATE) AND @yearReport <> YEAR(period.A_LASTDATE) --Р“РѕРґ РѕС‚С‡РµС‚Р° РЅРµ СЂР°РІРµРЅ РєСЂР°Р№РЅРµРјСѓ.
+    OR @yearReport = YEAR(period.STARTDATE) AND @monthReport >= MONTH(period.STARTDATE) --РР»Рё СЂР°РІРµРЅ РЅР°С‡Р°Р»СЊРЅРѕРјСѓ, РЅРѕ РјРµСЃСЏС† РїРѕР·Р¶Рµ РЅР°С‡Р°Р»Р°.
+    OR @yearReport = YEAR(period.A_LASTDATE) AND @monthReport <= MONTH(period.A_LASTDATE) --РР»Рё СЂР°РІРµРЅ РєРѕРЅРµС‡РЅРѕРјСѓ, РЅРѕ РјРµСЃСЏС† СЂР°РЅСЊС€Рµ РєРѕРЅС†Р°.
+   )
+----РРЅРґРёРІРёРґСѓР°Р»СЊРЅР°СЏ РїСЂРѕРіСЂР°РјРјР°.
+ INNER JOIN INDIVID_PROGRAM individProgram
+  ON individProgram.A_OUID = socServ.A_IPPSU
+   AND individProgram.A_STATUS = 10 --РЎС‚Р°С‚СѓСЃ РёРЅРґРёРІРёРґСѓР°Р»СЊРЅРѕР№ РїСЂРѕРіСЂР°РјРјС‹ РІ Р‘Р” "Р”РµР№СЃС‚РІСѓРµС‚".
+----Р”РµР№СЃС‚РІСѓСЋС‰РёРµ РґРѕРєСѓРјРµРЅС‚С‹.
+ INNER JOIN WM_ACTDOCUMENTS actDocuments
+  ON actDocuments.OUID = individProgram.A_DOC
+   AND actDocuments.A_STATUS = 10 --РЎС‚Р°С‚СѓСЃ РґРѕРєСѓРјРµРЅС‚Р° РІ Р‘Р” "Р”РµР№СЃС‚РІСѓРµС‚".
+   AND actDocuments.DOCUMENTSNUMBER = @numberDocument --РќРѕРјРµСЂ РґРѕРєСѓРјРµРЅС‚Р° СЃРѕРІРїР°РґР°РµС‚ СЃ С‚СЂРµР±СѓРµРјС‹Рј.
+----Р›РёС‡РЅРѕРµ РґРµР»Рѕ Р»СЊРіРѕС‚РѕРґРµСЂР¶Р°С‚РµР»СЏ.
+ INNER JOIN WM_PERSONAL_CARD personalCard
+  ON personalCard.OUID = socServ.A_PERSONOUID
+   AND personalCard.A_STATUS = 10 --РЎС‚Р°С‚СѓСЃ Р›Р” РІ Р‘Р” "Р”РµР№СЃС‚РІСѓРµС‚".
+----Р¤РѕСЂРјР° СЃРѕС†РёР°Р»СЊРЅРѕРіРѕ РѕР±СЃР»СѓР¶РёРІР°РЅРёСЏ.
+ INNER JOIN SPR_FORM_SOCSERV formSocServ
+  ON formSocServ.A_OUID = individProgram.A_FORM_SOCSERV
+   AND formSocServ.A_NAME = @formSocServ --РЎРѕРІРїР°РґР°РµС‚ СЃ С„РѕСЂРјРѕР№ РѕС‚С‡РµС‚Р°.
+----РћСЂРіР°РЅС‹ СЃРѕС†РёР°Р»СЊРЅРѕР№ Р·Р°С‰РёС‚С‹.
+ INNER JOIN SPR_ORG_BASE organization
+  ON organization.OUID = socServ.A_ORGNAME
+----Р”РµРїР°СЂС‚Р°РјРµРЅС‚.
+ INNER JOIN SPR_ORG_BASE departament
+  ON departament.OUID = socServ.A_DEPNAME
+----РЎС‚Р°С‚СѓСЃ РЅР°Р·РЅР°С‡РµРЅРёСЏ.
+ INNER JOIN SPR_STATUS_PROCESS statusServ 
+  ON statusServ.A_ID = socServ.A_STATUSPRIVELEGE
+WHERE socServ.A_STATUS = 10 --РЎС‚Р°С‚СѓСЃ РЅР°Р·РЅР°С‡РµРЅРёСЏ РІ Р‘Р” "Р”РµР№СЃС‚РІСѓРµС‚".
 -------------------------------------------------------------------------------------------------------------------------------
