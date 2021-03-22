@@ -1,8 +1,8 @@
 DECLARE @dataFrom DATE
-SET @dataFrom = CONVERT(DATE, '01-01-2016')
+SET @dataFrom = CONVERT(DATE, '01-01-2020')
 
 DECLARE @dataTo DATE
-SET @dataTo = CONVERT(DATE, '31-12-2016')
+SET @dataTo = CONVERT(DATE, '31-12-2020')
 
 --------------------------------------------------------------------------------------------------------------------------------
 
