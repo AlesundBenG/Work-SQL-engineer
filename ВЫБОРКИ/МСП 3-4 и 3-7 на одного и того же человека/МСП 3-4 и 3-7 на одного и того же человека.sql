@@ -30,13 +30,13 @@ CREATE TABLE #THREE_TO_SEVEN (
 
 
 --От трех до четырех.
+INSERT INTO #THREE_TO_FOUR(PERSONOUID, CHILD, MSP, START_DATE, LAST_DATE)
 SELECT 
     servServ.A_PERSONOUID               AS PERSONOUID,
     servServ.A_CHILD                    AS CHILD,
     servServ.A_SK_MSP                   AS MSP,
     CONVERT(DATE, period.STARTDATE)     AS START_DATE,
     CONVERT(DATE, period.A_LASTDATE)    AS LAST_DATE  
-INTO #THREE_TO_FOUR
 FROM ESRN_SERV_SERV servServ --Назначения МСП.
 ----Срок действия назначения.
     INNER JOIN SPR_SERV_PERIOD period 
@@ -47,19 +47,20 @@ FROM ESRN_SERV_SERV servServ --Назначения МСП.
 WHERE (ISNULL(servServ.A_STATUS, 10) = 10)  --Статус назначения в БД "Действует".
     AND servServ.A_STATUSPRIVELEGE = 13     --Утвержденное назначение.
     AND servServ.A_SK_MSP = 995             --Ежемесячная социальная выплата на ребенка в возрасте от трех до четырех лет.
-    
+
+
     
 --------------------------------------------------------------------------------------------------------
 
 
 --От трех до семи.
+INSERT INTO #THREE_TO_SEVEN(PERSONOUID, CHILD, MSP, START_DATE, LAST_DATE)
 SELECT 
     servServ.A_PERSONOUID               AS PERSONOUID,
     servServ.A_CHILD                    AS CHILD,
     servServ.A_SK_MSP                   AS MSP,
     CONVERT(DATE, period.STARTDATE)     AS START_DATE,
     CONVERT(DATE, period.A_LASTDATE)    AS LAST_DATE  
-INTO #THREE_TO_SEVEN
 FROM ESRN_SERV_SERV servServ --Назначения МСП.
 ----Срок действия назначения.
     INNER JOIN SPR_SERV_PERIOD period 
@@ -71,7 +72,7 @@ WHERE (ISNULL(servServ.A_STATUS, 10) = 10)  --Статус назначения 
     AND servServ.A_STATUSPRIVELEGE = 13     --Утвержденное назначение.
     AND servServ.A_SK_MSP = 997             --Ежемесячная социальная выплата на ребенка в возрасте от трех до семи лет включительно.
    
-    
+   
 --------------------------------------------------------------------------------------------------------
     
     
@@ -98,3 +99,6 @@ FROM #THREE_TO_FOUR ttf --От трех до четырех.
         ON srs.A_ID = tts.MSP
 WHERE ttf.MSP <> tts.MSP --МСП разные.
 ORDER BY ttf.CHILD 
+
+
+--------------------------------------------------------------------------------------------------------
