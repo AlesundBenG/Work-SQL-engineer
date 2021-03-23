@@ -35,13 +35,32 @@ WHERE wife.A_STATUS = 10        --Статус в БД "Действует".
     AND husband.A_RELATED_RELATIONSHIP = 8  --Является женой по отношению к мужчине.
     AND wife.A_RELATED_RELATIONSHIP = 9     --Является мужом по отношению к женщине.
     
+--Мужчины без жен.
+INSERT INTO #HUSBAND_AND_WIFE (FAMILY_ID, HUSBAND, WIFE)
+SELECT 
+    NEWID()             AS FAMILY_ID,
+    personalCard.OUID   AS HUSBAND,
+    CAST(NULL AS INT)   AS WIFE
+FROM WM_PERSONAL_CARD personalCard
+WHERE personalCard.A_SEX = 1 --Мужчина.
+    AND personalCard.OUID NOT IN (SELECT HUSBAND FROM #HUSBAND_AND_WIFE WHERE HUSBAND IS NOT NULL)   
     
+--Женщины без мужей.
+INSERT INTO #HUSBAND_AND_WIFE (FAMILY_ID, HUSBAND, WIFE)
+SELECT 
+    NEWID()             AS FAMILY_ID,
+    CAST(NULL AS INT)   AS HUSBAND,
+    personalCard.OUID   AS WIFE
+FROM WM_PERSONAL_CARD personalCard
+WHERE personalCard.A_SEX = 2 --Женщина.
+    AND personalCard.OUID NOT IN (SELECT WIFE FROM #HUSBAND_AND_WIFE WHERE WIFE IS NOT NULL)
+
+
 ------------------------------------------------------------------------------------------------------------------------------
 
 
 --Проверка.
 SELECT * FROM #HUSBAND_AND_WIFE
-ORDER BY HUSBAND
 
 
 ------------------------------------------------------------------------------------------------------------------------------
