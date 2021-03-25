@@ -13,48 +13,62 @@ SET @endDateReport = CONVERT(DATE, '31-12-2020')
 ------------------------------------------------------------------------------------------------------------------------------
 
 
-
 --Удаление временных таблиц.
-IF OBJECT_ID('tempdb..#TABLE_AGE')          IS NOT NULL BEGIN DROP TABLE #TABLE_AGE         END --Таблица возрастов.
-IF OBJECT_ID('tempdb..#RELATIONSHIP')       IS NOT NULL BEGIN DROP TABLE #RELATIONSHIP      END --Таблица родственных связей людей.
-IF OBJECT_ID('tempdb..#MANY_CHILD_FAMILY')  IS NOT NULL BEGIN DROP TABLE #MANY_CHILD_FAMILY END --Таблица людей, имеющих 3 и более детей на момент периода.
-IF OBJECT_ID('tempdb..#PASSPORT_PEOPLE')    IS NOT NULL BEGIN DROP TABLE #PASSPORT_PEOPLE   END --Таблица поспартов людей.
-IF OBJECT_ID('tempdb..#MANY_CHILD_DOC')     IS NOT NULL BEGIN DROP TABLE #MANY_CHILD_DOC    END --Таблица удостоверений многодетной семьи и удостоверений многодетной малообеспеченной семьи.
-
+IF OBJECT_ID('tempdb..#PERSONAL_CARD_DATE_OFF')         IS NOT NULL BEGIN DROP TABLE #PERSONAL_CARD_DATE_OFF            END --Даты снатия с учетов личных дел.
+IF OBJECT_ID('tempdb..#VALID_PERSONAL_CARD_FOR_REPORT') IS NOT NULL BEGIN DROP TABLE #VALID_PERSONAL_CARD_FOR_REPORT    END --Валидные личные дела для отчета.
+IF OBJECT_ID('tempdb..#TABLE_AGE')                      IS NOT NULL BEGIN DROP TABLE #TABLE_AGE                         END --Таблица возрастов.
+IF OBJECT_ID('tempdb..#PARENT_AND_CHILD')               IS NOT NULL BEGIN DROP TABLE #PARENT_AND_CHILD                  END --Таблица родственных связей людей.
+IF OBJECT_ID('tempdb..#HUSBAND_AND_WIFE')               IS NOT NULL BEGIN DROP TABLE #HUSBAND_AND_WIFE                  END --Таблица мужей и жен.
+IF OBJECT_ID('tempdb..#MOTHER_AND_FATHER')              IS NOT NULL BEGIN DROP TABLE #MOTHER_AND_FATHER                 END --Матерей и отцов.
+IF OBJECT_ID('tempdb..#MANY_CHILD_FAMILY')              IS NOT NULL BEGIN DROP TABLE #MANY_CHILD_FAMILY                 END --Таблица семей, имеющих 3 и более детей на момент периода.
+IF OBJECT_ID('tempdb..#MANY_CHILD_DOC')                 IS NOT NULL BEGIN DROP TABLE #MANY_CHILD_DOC                    END --Таблица удостоверений многодетной семьи и удостоверений многодетной малообеспеченной семьи.
 IF OBJECT_ID('tempdb..#WHO_BECAME_MANY_CHILD_FAMILY')   IS NOT NULL BEGIN DROP TABLE #WHO_BECAME_MANY_CHILD_FAMILY      END --Кто стал многодетной семьей в период.
 IF OBJECT_ID('tempdb..#WHO_STOPPED_MANY_CHILD_FAMILY')  IS NOT NULL BEGIN DROP TABLE #WHO_STOPPED_MANY_CHILD_FAMILY     END --Кто перестал быть многодетной семьей в период.
-
-IF OBJECT_ID('tempdb..#LAST_SDD') IS NOT NULL BEGIN DROP TABLE #LAST_SDD END --Последнее зарегестрированное СДД.
+IF OBJECT_ID('tempdb..#LAST_SDD')                       IS NOT NULL BEGIN DROP TABLE #LAST_SDD                          END --Последнее зарегестрированное СДД.
+IF OBJECT_ID('tempdb..#PASSPORT_PEOPLE')                IS NOT NULL BEGIN DROP TABLE #PASSPORT_PEOPLE                   END --Таблица поспартов людей.
 
 
 ------------------------------------------------------------------------------------------------------------------------------
 
 
 --Создание временных таблиц.
+CREATE TABLE #PERSONAL_CARD_DATE_OFF (
+    OFF_DATE    DATE,   --Дата снятия с учета.
+    PERSONOUID  INT,    --Личное дело.
+    REASON_OFF  INT,    --Причина снятия с учета (SPR_RES_REMUV).
+)
+CREATE TABLE #VALID_PERSONAL_CARD_FOR_REPORT (
+    PERSONOUID INT, --Личное дело.
+)
 CREATE TABLE #TABLE_AGE (
     PERSONOUID          INT,    --ID личного дела.  
     BIRTHDATE           DATE,   --Дата рождения человека.  
     DEATH_DATE          DATE,   --Дата смерти человека при наличии.
     AGE_IN_DATE_FROM    INT,    --Возраст относительно даты @startDateReport.
-    AGE_IN_DATE_TO      INT,    --Возраст относительно даты @@endDateReport.
+    AGE_IN_DATE_TO      INT,    --Возраст относительно даты @endDateReport.
 )
-CREATE TABLE #RELATIONSHIP (
-    PERSONOUID_1        INT,    --Личное дело.
-    PERSONOUID_2        INT,    --Личное дело родственника.
+CREATE TABLE #PARENT_AND_CHILD (
+    PARENT_OUID INT,    --Личное дело.
+    CHILD_OUID  INT,    --Личное дело родственника.
+)
+CREATE TABLE #HUSBAND_AND_WIFE (
+    PERSONOUID_1        INT,    --Личное дело 1.
+    PERSONOUID_2        INT,    --Личное дело 2.
+    RELATIONSHIP_TYPE   INT     --Тип отношения 1 к 2.
+)
+CREATE TABLE #MOTHER_AND_FATHER (
+    MOTHER_OUID INT,    --Личное дело матери.
+    FATHER_OUID INT,    --Личное дело отца.
+    CHILD_OUID  INT,    --Идентификатор ребенка.
 )
 CREATE TABLE #MANY_CHILD_FAMILY (
-    PERSONOUID              INT,    --Идентификатор личного дела родителя.  
+    MOTHER_OUID             INT,    --Личное дело матери.
+    FATHER_OUID             INT,    --Личное дело отца.
     COUNT_CHILD             INT,    --Количество детей.
     COUNT_BORN_CHILD        INT,    --Количество рожденных детей в период.
     COUNT_GROWN_UP_CHILD    INT,    --Количество детей, исполнившимся 18 лет в период.
     COUNT_DEATH_CHILD       INT,    --Количество умерших детей в период.
 )
-CREATE TABLE #PASSPORT_PEOPLE (
-    PERSONOUID      INT,            --Идентификатор личного дела.    
-    PASSPORT_SERIES VARCHAR(50),    --Серия паспорта.
-    PASSPORT_NUMBER VARCHAR(50),    --Номер паспорта.
-)
---Создание временных таблиц.
 CREATE TABLE #MANY_CHILD_DOC (
     PERSONOUID      INT,    --Идентификатор личного дела.  
     DOC_OUID        INT,    --Идентификатор документа.
@@ -64,26 +78,103 @@ CREATE TABLE #MANY_CHILD_DOC (
     DOC_INDEX_INC   INT,    --Порядковый номер по возрастанию даты начала действия.
     DOC_INDEX_DESC  INT     --Порядковый номер по убыванию даты начала действия.
 )
-
 CREATE TABLE #WHO_BECAME_MANY_CHILD_FAMILY (
-    PERSONOUID      INT,    --Идентификатор личного дела.  
+    MOTHER_OUID     INT,    --Личное дело матери.
+    FATHER_OUID     INT,    --Личное дело отца.
     START_DATE      DATE,   --Дата начала.
     TYPE_START_DATE INT,    --Тип даты начала (0 - дата начала действия документа, 1 - дата рождения третьего ребенка, но документа нет).
 )
 CREATE TABLE #WHO_STOPPED_MANY_CHILD_FAMILY (
-    PERSONOUID      INT,    --Идентификатор личного дела.  
+    MOTHER_OUID     INT,    --Личное дело матери.
+    FATHER_OUID     INT,    --Личное дело отца.
     STOP_DATE       DATE,   --Дата окончания.
     TYPE_STOP_DATE  INT,    --Тип даты окончания (0 - дата окончание действия документа, 1 - исполнение 18-летия, после чего остается 2 ребенка, 2 - смерть ребенка, после которой остается 2 ребенка).
 )
 CREATE TABLE #LAST_SDD (
-    PERSONOUID  INT,    --ID личного дела.
+    MOTHER_OUID INT,    --Личное дело матери.
+    FATHER_OUID INT,    --Личное дело отца.
     SDD         FLOAT,  --СДД.
     DATE_REG    DATE,   --Дата регистрации заявления с СДД.
     SERV_TYPE   INT     --МСП, на которое было подано заявление.
 )
+CREATE TABLE #PASSPORT_PEOPLE (
+    PERSONOUID      INT,            --Идентификатор личного дела.    
+    PASSPORT_SERIES VARCHAR(50),    --Серия паспорта.
+    PASSPORT_NUMBER VARCHAR(50),    --Номер паспорта.
+)
 
 
 ------------------------------------------------------------------------------------------------------------------------------
+
+
+--Выборка даты снятия с учета личных дел.
+INSERT INTO #PERSONAL_CARD_DATE_OFF (OFF_DATE, PERSONOUID, REASON_OFF)
+SELECT 
+    t.OFF_DATE,
+    t.PERSONOUID,
+    t.REASON_OFF
+FROM (
+    SELECT 
+        CONVERT(DATE, reasonOff.A_DATE)         AS OFF_DATE,
+        personalCard.OUID                       AS PERSONOUID,
+        reasonOff.A_NAME                        AS REASON_OFF,
+        CONVERT(DATE, reasonOff.A_DATEREPEATIN) AS RETURN_DATE,
+        --Для отбора последнего снятия.
+        ROW_NUMBER() OVER (PARTITION BY personalCard.OUID ORDER BY reasonOff.A_DATE DESC) AS gnum 
+    FROM WM_REASON reasonOff --Снятие с учета гражданина.
+    ----Таблица связки причин с личными делами.
+        INNER JOIN SPR_LINK_PERSON_REASON linkWithPersonalCard
+            ON linkWithPersonalCard.TOID = reasonOff.A_OUID
+    ----Личное дело гражданина.
+        INNER JOIN WM_PERSONAL_CARD personalCard 
+            ON personalCard.OUID = linkWithPersonalCard.FROMID
+                AND personalCard.A_PCSTATUS IN (3, 4)   --Архивное, либо снятое с учета.
+    WHERE reasonOff.A_STATUS = 10                       --Статус в БД "Действует".
+) t
+WHERE t.gnum = 1                --Последняя запись.
+    AND t.RETURN_DATE IS NULL   --Дело еще не было восстановлено.
+;   
+    
+  
+--------------------------------------------------------------------------------------------------------------------------------
+
+
+--Выборка валидных личных дел для отчета.
+INSERT INTO #VALID_PERSONAL_CARD_FOR_REPORT (PERSONOUID)
+SELECT
+    personalCard.OUID   AS PERSONOUID
+FROM WM_PERSONAL_CARD personalCard
+----Снятые с учета.
+    LEFT JOIN #PERSONAL_CARD_DATE_OFF personalCardOff
+        ON personalCardOff.PERSONOUID = personalCard.OUID
+WHERE personalCard.A_STATUS = 10                                        --Статус в БД "Действует".
+    AND personalCard.OUID IS NOT NULL                                   --Есть дело.
+    AND (personalCard.A_DEATHDATE IS NULL                               --Нет даты смерти, или...
+        OR @startDateReport <= CONVERT(DATE, personalCard.A_DEATHDATE)  --...она позже даты начала периода отчета.
+    )
+    AND (personalCard.A_PCSTATUS = 1                            --Личное дело действует, или...
+        OR @startDateReport <= personalCardOff.OFF_DATE         --...оно не было снято до начала периода.
+    )
+    --AND personalCard.OUID IN (
+    --    853530,
+    --    445883,
+    --    1368846,
+    --    1429370,
+    --    1557529,
+    --    1476836
+    --)
+;
+
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+
+--Освобождение памяти.
+IF OBJECT_ID('tempdb..#PERSONAL_CARD_DATE_OFF') IS NOT NULL BEGIN DROP TABLE #PERSONAL_CARD_DATE_OFF END 
+;
+
+
+--------------------------------------------------------------------------------------------------------------------------------
 
 
 --Выборка в таблицу возрастов.
@@ -107,21 +198,19 @@ SELECT
             ELSE 0                                                                  --В этом месяце день рождения, и он уже был.
         END	AS AGE_IN_DATE_TO
 FROM WM_PERSONAL_CARD personalCard --Личное дело.
+WHERE personalCard.OUID IN (SELECT PERSONOUID FROM #VALID_PERSONAL_CARD_FOR_REPORT)
+;
 
 
 ------------------------------------------------------------------------------------------------------------------------------
 
 
 --Выборка родственных связей людей.
-INSERT INTO #RELATIONSHIP (PERSONOUID_1, PERSONOUID_2)
+INSERT INTO #PARENT_AND_CHILD (PARENT_OUID, CHILD_OUID)
 SELECT 
-    relationships.A_ID1 AS PERSONOUID_1,
-    relationships.A_ID2 AS PERSONOUID_2
+    relationships.A_ID1 AS PARENT_OUID,
+    relationships.A_ID2 AS CHILD_OUID
 FROM WM_RELATEDRELATIONSHIPS relationships --Родственные связи.
-----Личное дело родственника.
-    INNER JOIN WM_PERSONAL_CARD personalCardChild
-        ON personalCardChild.A_STATUS = 10                      --Статусв в БД "Действует".
-            AND personalCardChild.OUID = relationships.A_ID2    --Связка с родственной связью.
 ----Возраст родственника.
     INNER JOIN #TABLE_AGE tableAge
         ON tableAge.AGE_IN_DATE_FROM < 18                       --Меньше 18 лет в начале периода.
@@ -130,113 +219,392 @@ FROM WM_RELATEDRELATIONSHIPS relationships --Родственные связи.
                 OR tableAge.DEATH_DATE >= @startDateReport      --Либо дата смерти после начала периода и...
                 AND tableAge.BIRTHDATE != tableAge.DEATH_DATE   --И не мертворожденный.
             )
-            AND tableAge.PERSONOUID = personalCardChild.OUID    --Связка с родственником.
+            AND tableAge.PERSONOUID = relationships.A_ID2       --Связка с родственником.
 ----Сведения об опеке.
     LEFT JOIN WM_INCAPABLE_CITIZEN guardianship
         ON guardianship.A_STATUS = 10                           --Статус в БД "Действует".
             AND guardianship.A_PC_TUTOR = relationships.A_ID1   --Опекун.
             AND guardianship.A_PC_CITIZEN = relationships.A_ID2 --Опекуемый.
 WHERE relationShips.A_STATUS = 10                               --Статус в БД "Действует".
+    AND relationships.A_ID1 IN (                                --Дело валидно...
+        SELECT PERSONOUID FROM #VALID_PERSONAL_CARD_FOR_REPORT  --...а ребенка не проверяем, так как он отсеется при связке с возрастом...
+    )                                                           --...так как в таблице возрастов только валидные дела.
     AND (relationShips.A_RELATED_RELATIONSHIP IN (3, 4, 26, 43) --Сын, Дочь, Пасынок, Падчерица.
         OR                                                      --Или...
         (relationShips.A_RELATED_RELATIONSHIP IN (11, 12, 17)   --Внук, Другая степень родства, Внучка...
             AND guardianship.A_ID IS NOT NULL                   --При наличии опекунства.
         )              
     )
+;
 
 
 ------------------------------------------------------------------------------------------------------------------------------
 
 
---Выборка людей, имеющих 3 и более детей на момент периода.
-INSERT INTO #MANY_CHILD_FAMILY (PERSONOUID, COUNT_CHILD, COUNT_BORN_CHILD, COUNT_GROWN_UP_CHILD, COUNT_DEATH_CHILD)
+--Выборка мужей и жен.
+INSERT INTO #HUSBAND_AND_WIFE (PERSONOUID_1, PERSONOUID_2, RELATIONSHIP_TYPE)
+SELECT 
+    relationship.A_ID1                      AS PERSONOUID_1,
+    relationship.A_ID2                      AS PERSONOUID_2,
+    relationship.A_RELATED_RELATIONSHIP     AS RELATIONSHIP_TYPE
+FROM WM_RELATEDRELATIONSHIPS relationship --Родственные связи.
+WHERE relationship.A_STATUS = 10                        --Статус в БД "Действует".
+    AND relationship.A_RELATED_RELATIONSHIP IN (8, 9)   --Жена, Муж.
+    AND relationship.A_ID1 IN (SELECT PERSONOUID FROM #VALID_PERSONAL_CARD_FOR_REPORT)    
+    AND relationship.A_ID2 IN (SELECT PERSONOUID FROM #VALID_PERSONAL_CARD_FOR_REPORT)    
+;
+
+    
+------------------------------------------------------------------------------------------------------------------------------
+
+
+--Выборка полных семей с детьми.
+INSERT INTO #MOTHER_AND_FATHER (MOTHER_OUID, FATHER_OUID, CHILD_OUID)
 SELECT
-    relationship.PERSONOUID_1   AS PERSONOUID,
-    COUNT(*)                    AS COUNT_CHILD,
-    CAST(NULL AS INT)           AS COUNT_BORN_CHILD,
-    CAST(NULL AS INT)           AS COUNT_GROWN_UP_CHILD,
-    CAST(NULL AS INT)           AS COUNT_DEATH_CHILD
-FROM #RELATIONSHIP relationship --Родственные связи.
-GROUP BY PERSONOUID_1
+    wife.PERSONOUID_1       AS MOTHER_OUID,
+    husband.PERSONOUID_1    AS FATHER_OUID,
+    child.CHILD_OUID        AS CHILD_OUID
+FROM #HUSBAND_AND_WIFE wife --Жена.
+----Муж.
+    INNER JOIN #HUSBAND_AND_WIFE husband                    --В таблице только валидные ЛД.
+        ON husband.PERSONOUID_1 = wife.PERSONOUID_2         --Человек указан как муж у жены.
+            AND husband.PERSONOUID_2 = wife.PERSONOUID_1    --Человек указан как жена у мужа.
+----Таблица родителей и их детей.
+    INNER JOIN #PARENT_AND_CHILD child                      --В таблице только валидные ЛД.
+        ON child.PARENT_OUID = wife.PERSONOUID_1 
+            --OR child.PARENT_OUID = husband.PERSONOUID_1   --Бесконечное выполнение с этим условием, хотя желательно подцепить еще на всякий случай детей мужа, вдруг у жены они не указаны.
+WHERE wife.RELATIONSHIP_TYPE = 9        --К жене человек относится как муж.
+    AND husband.RELATIONSHIP_TYPE = 8   --К мужу человек относится как жена.
+;
+
+--Выборка не полных семей с детьми (Только отец).
+INSERT INTO #MOTHER_AND_FATHER (MOTHER_OUID, FATHER_OUID, CHILD_OUID)
+SELECT
+    CAST(NULL AS INT)   AS WIFE,
+    personalCard.OUID   AS HUSBAND,
+    child.CHILD_OUID    AS CHILD_OUID
+FROM WM_PERSONAL_CARD personalCard
+    INNER JOIN #PARENT_AND_CHILD child  --В таблице только валидные ЛД.
+        ON child.PARENT_OUID = personalCard.OUID 
+WHERE personalCard.A_SEX = 1 --Мужчина.
+    AND personalCard.OUID NOT IN (SELECT FATHER_OUID FROM #MOTHER_AND_FATHER WHERE FATHER_OUID IS NOT NULL)     
+
+--Выборка не полных семей с детьми (Только мать).
+INSERT INTO #MOTHER_AND_FATHER (MOTHER_OUID, FATHER_OUID, CHILD_OUID)
+SELECT
+    personalCard.OUID   AS WIFE,
+    CAST(NULL AS INT)   AS HUSBAND,
+    child.CHILD_OUID    AS CHILD_OUID
+FROM WM_PERSONAL_CARD personalCard
+    INNER JOIN #PARENT_AND_CHILD child  --В таблице только валидные ЛД.
+        ON child.PARENT_OUID = personalCard.OUID 
+WHERE personalCard.A_SEX = 2 --Женщина.
+    AND personalCard.OUID NOT IN (SELECT MOTHER_OUID FROM #MOTHER_AND_FATHER WHERE MOTHER_OUID IS NOT NULL)   
+;
+
+
+------------------------------------------------------------------------------------------------------------------------------
+ 
+
+--Освобождение памяти.
+IF OBJECT_ID('tempdb..#HUSBAND_AND_WIFE') IS NOT NULL BEGIN DROP TABLE #HUSBAND_AND_WIFE END 
+;
+
+
+------------------------------------------------------------------------------------------------------------------------------
+
+
+--Выборка семей, имеющих 3 и более детей на момент периода.
+INSERT INTO #MANY_CHILD_FAMILY (MOTHER_OUID, FATHER_OUID, COUNT_CHILD, COUNT_BORN_CHILD, COUNT_GROWN_UP_CHILD, COUNT_DEATH_CHILD)
+SELECT
+    family.MOTHER_OUID  AS MOTHER_OUID,
+    family.FATHER_OUID  AS FATHER_OUID,
+    COUNT(*)            AS COUNT_CHILD,
+    0                   AS COUNT_BORN_CHILD,
+    0                   AS COUNT_GROWN_UP_CHILD,
+    0                   AS COUNT_DEATH_CHILD
+FROM #MOTHER_AND_FATHER family
+GROUP BY family.MOTHER_OUID, family.FATHER_OUID
 HAVING COUNT(*) >= 3
+;
 
---Подсчет рожденных детей в период.
+--Подсчет выросших детей, рожденных и умерших.
 UPDATE family
-SET family.COUNT_BORN_CHILD = t.COUNT_BORN_CHILD
+SET family.COUNT_BORN_CHILD = t.COUNT_BORN_CHILD,
+    family.COUNT_GROWN_UP_CHILD = t.COUNT_GROWN_UP_CHILD,
+    family.COUNT_DEATH_CHILD = t.COUNT_DEATH_CHILD
+FROM #MANY_CHILD_FAMILY family
+    LEFT JOIN (
+    ----Подсчет особых ситуаций.
+        SELECT 
+            t.MOTHER_OUID           AS MOTHER_OUID,
+            t.FATHER_OUID           AS FATHER_OUID,
+            SUM(t.BORN_CHILD)       AS COUNT_BORN_CHILD,
+            SUM(t.GROWN_UP_CHILD)   AS COUNT_GROWN_UP_CHILD,
+            SUM(t.DEATH_CHILD)      AS COUNT_DEATH_CHILD
+        FROM (
+        ----Определение особых ситуаций.
+            SELECT
+                manyChildFamily.MOTHER_OUID     AS MOTHER_OUID,
+                manyChildFamily.FATHER_OUID     AS FATHER_OUID, 
+                motherAndFather.CHILD_OUID      AS CHILD_OUID,
+                CASE WHEN tableAge.AGE_IN_DATE_TO >= 18                                     THEN 1 ELSE 0 END  AS GROWN_UP_CHILD,
+                CASE WHEN tableAge.BIRTHDATE BETWEEN @startDateReport AND @endDateReport    THEN 1 ELSE 0 END  AS BORN_CHILD,
+                CASE WHEN tableAge.DEATH_DATE BETWEEN @startDateReport AND @endDateReport   THEN 1 ELSE 0 END  AS DEATH_CHILD
+            FROM #MANY_CHILD_FAMILY manyChildFamily --Многодетная семья.
+            ----Родители и их дети.
+                INNER JOIN #MOTHER_AND_FATHER motherAndFather
+                    ON ISNULL(motherAndFather.MOTHER_OUID, 0) = ISNULL(manyChildFamily.MOTHER_OUID, 0)
+                        AND ISNULL(motherAndFather.FATHER_OUID, 0) = ISNULL(manyChildFamily.FATHER_OUID, 0)
+            ----Информация о ребенке.
+                INNER JOIN #TABLE_AGE tableAge
+                    ON tableAge.PERSONOUID = motherAndFather.CHILD_OUID
+        ) t
+        GROUP BY t.MOTHER_OUID, t.FATHER_OUID
+) t
+    ON ISNULL(t.MOTHER_OUID, 0) = ISNULL(family.MOTHER_OUID, 0)
+        AND ISNULL(t.FATHER_OUID, 0) = ISNULL(family.FATHER_OUID, 0)
+;
+
+
+------------------------------------------------------------------------------------------------------------------------------
+
+
+--Выборка документов многодетной семьи.
+INSERT INTO #MANY_CHILD_DOC (PERSONOUID, DOC_OUID, DOC_TYPE, DOC_START_DATE, DOC_END_DATE, DOC_INDEX_INC, DOC_INDEX_DESC)
+SELECT 
+    actDocuments.PERSONOUID                             AS PERSONOUID,
+    actDocuments.OUID                                   AS DOC_OUID,
+    actDocuments.DOCUMENTSTYPE                          AS DOC_TYPE,
+    CONVERT(DATE, actDocuments.ISSUEEXTENSIONSDATE)     AS DOC_START_DATE,
+    CONVERT(DATE, actDocuments.COMPLETIONSACTIONDATE)   AS DOC_END_DATE,
+    ROW_NUMBER() OVER (PARTITION BY actDocuments.PERSONOUID ORDER BY actDocuments.ISSUEEXTENSIONSDATE)      AS DOC_INDEX_INC,
+    ROW_NUMBER() OVER (PARTITION BY actDocuments.PERSONOUID ORDER BY actDocuments.ISSUEEXTENSIONSDATE DESC) AS DOC_INDEX_DESC 
+FROM WM_ACTDOCUMENTS actDocuments --Действующие документы.
+WHERE actDocuments.A_STATUS = 10    --Статус в БД "Действует".
+    AND actDocuments.DOCUMENTSTYPE IN (
+        2858,   --Удостоверение многодетной семьи или удостоверение многодетной малообеспеченной семьи.
+        2814    --Удостоверение многодетной семьи.
+    )  
+;
+
+------------------------------------------------------------------------------------------------------------------------------
+
+
+--Те, которые, по идее, получили первый документ в период.
+INSERT INTO #WHO_BECAME_MANY_CHILD_FAMILY(MOTHER_OUID, FATHER_OUID, START_DATE, TYPE_START_DATE)
+SELECT 
+    t.MOTHER_OUID,
+    t.FATHER_OUID,
+    t.STOP_DATE,
+    0 AS TYPE_STOP_DATE
 FROM (
     SELECT
-        family.PERSONOUID   AS PERSONOUID,
-        COUNT(*)            AS COUNT_BORN_CHILD
-    FROM #MANY_CHILD_FAMILY family --Семьи, имеющие 3 и более детей.
-    ----Родственные связи.
-        INNER JOIN #RELATIONSHIP relationship
-            ON relationship.PERSONOUID_1 = family.PERSONOUID
-    ----Личное дело родственника.
-        INNER JOIN #TABLE_AGE tableAge
-            ON tableAge.BIRTHDATE BETWEEN @startDateReport AND @endDateReport   --Дата рождения в период.
-                AND tableAge.PERSONOUID = relationship.PERSONOUID_2             --Связка с родственными связями.  
-    GROUP BY family.PERSONOUID
+        family.MOTHER_OUID          AS MOTHER_OUID,
+        family.FATHER_OUID          AS FATHER_OUID,
+        manyChildDoc.DOC_END_DATE   AS STOP_DATE,
+        ROW_NUMBER() OVER (PARTITION BY family.MOTHER_OUID, family.FATHER_OUID ORDER BY manyChildDoc.DOC_END_DATE DESC) AS gnum 
+    FROM #MANY_CHILD_FAMILY family --Многодетные семьи.
+    ----Документы, подтверждающие многодетность.
+        INNER JOIN #MANY_CHILD_DOC manyChildDoc
+            ON manyChildDoc.PERSONOUID = ISNULL(family.MOTHER_OUID, 0)
+                OR manyChildDoc.PERSONOUID = ISNULL(family.FATHER_OUID, 0)
+    WHERE family.COUNT_CHILD - family.COUNT_BORN_CHILD < 3                          --До рождение ребенков в период было меньше 3 детей в семье. 
+        AND manyChildDoc.DOC_START_DATE BETWEEN @startDateReport AND @endDateReport --Документ начал действие в период.
 ) t
-    INNER JOIN #MANY_CHILD_FAMILY family
-        ON t.PERSONOUID = family.PERSONOUID
+WHERE t.gnum = 1
 
---Подсчет детей, исполнившихся 18 в период.
-UPDATE family
-SET family.COUNT_GROWN_UP_CHILD = t.COUNT_GROWN_UP_CHILD
+--Те, которые, по идее не получили документ, но третий ребенок все-таки родился.
+INSERT INTO #WHO_BECAME_MANY_CHILD_FAMILY(MOTHER_OUID, FATHER_OUID, START_DATE, TYPE_START_DATE)
+SELECT 
+    t.MOTHER_OUID,
+    t.FATHER_OUID,
+    t.START_DATE,
+    1 AS TYPE_START_DATE
+FROM (
+    SELECT  
+        family.MOTHER_OUID  AS MOTHER_OUID,
+        family.FATHER_OUID  AS FATHER_OUID,
+        tableAge.BIRTHDATE  AS START_DATE,
+        --Самого старшего из родившихся.
+        ROW_NUMBER() OVER (PARTITION BY family.MOTHER_OUID, family.FATHER_OUID ORDER BY tableAge.BIRTHDATE) AS gnum 
+    FROM #MANY_CHILD_FAMILY family --Многодетные семьи.
+    ----Родители и их дети.
+        INNER JOIN #MOTHER_AND_FATHER motherAndFather
+            ON ISNULL(motherAndFather.MOTHER_OUID, 0) = ISNULL(family.MOTHER_OUID, 0)
+                OR ISNULL(motherAndFather.FATHER_OUID, 0) = ISNULL(family.FATHER_OUID, 0)
+    ----Возраст ребенка.
+        INNER JOIN #TABLE_AGE tableAge
+            ON tableAge.PERSONOUID = motherAndFather.CHILD_OUID
+                AND tableAge.BIRTHDATE BETWEEN @startDateReport AND @endDateReport  --Родился в период отчета.
+    WHERE family.COUNT_BORN_CHILD > 0                           --Есть рожденный ребенок в период.
+        AND family.COUNT_CHILD - family.COUNT_BORN_CHILD < 3    --До рождение ребенков в период было меньше 3 детей в семье. 
+        AND motherAndFather.MOTHER_OUID NOT IN (                --Нет документа, начавшегося в указанный период.
+            SELECT 
+                PERSONOUID 
+            FROM #MANY_CHILD_DOC manyChildDoc
+            WHERE manyChildDoc.DOC_START_DATE BETWEEN @startDateReport AND @endDateReport 
+        )
+        AND motherAndFather.FATHER_OUID NOT IN (            
+            SELECT 
+                PERSONOUID 
+            FROM #MANY_CHILD_DOC manyChildDoc
+            WHERE manyChildDoc.DOC_START_DATE BETWEEN @startDateReport AND @endDateReport 
+        )
+) t
+WHERE t.gnum = 1 --Самого старшего из родившихся.
+;
+
+
+------------------------------------------------------------------------------------------------------------------------------
+
+
+--Те, у которых закончилось действие документа в период.
+INSERT INTO #WHO_STOPPED_MANY_CHILD_FAMILY (MOTHER_OUID, FATHER_OUID, STOP_DATE, TYPE_STOP_DATE)
+SELECT 
+    t.MOTHER_OUID,
+    t.FATHER_OUID,
+    t.STOP_DATE,
+    0 AS TYPE_STOP_DATE
 FROM (
     SELECT
-        family.PERSONOUID   AS PERSONOUID,
-        COUNT(*)            AS COUNT_GROWN_UP_CHILD
-    FROM #MANY_CHILD_FAMILY family --Семьи, имеющие 3 и более детей.
-    ----Родственные связи.
-        INNER JOIN #RELATIONSHIP relationship
-            ON relationship.PERSONOUID_1 = family.PERSONOUID
-    ----Личное дело родственника.
-        INNER JOIN #TABLE_AGE tableAge
-            ON tableAge.AGE_IN_DATE_TO >= 18                            --18 и более лет в конце периода.
-                AND tableAge.PERSONOUID = relationship.PERSONOUID_2     --Связка с родственными связями.  
-    GROUP BY family.PERSONOUID
+        family.MOTHER_OUID          AS MOTHER_OUID,
+        family.FATHER_OUID          AS FATHER_OUID,
+        manyChildDoc.DOC_END_DATE   AS STOP_DATE,
+        ROW_NUMBER() OVER (PARTITION BY family.MOTHER_OUID, family.FATHER_OUID ORDER BY manyChildDoc.DOC_END_DATE DESC) AS gnum 
+    FROM #MANY_CHILD_FAMILY family
+        INNER JOIN #MANY_CHILD_DOC manyChildDoc
+            ON manyChildDoc.PERSONOUID = ISNULL(family.MOTHER_OUID, 0)
+                OR manyChildDoc.PERSONOUID = ISNULL(family.FATHER_OUID, 0)
+    WHERE manyChildDoc.DOC_END_DATE BETWEEN @startDateReport AND @endDateReport --Документ окончил действие в период.
+        AND manyChildDoc.DOC_INDEX_DESC = 1                                     --Больше документов не было.
 ) t
-    INNER JOIN #MANY_CHILD_FAMILY family
-        ON t.PERSONOUID = family.PERSONOUID
+WHERE t.gnum = 1
 
---Подсчет умерших детей в период.
-UPDATE family
-SET family.COUNT_DEATH_CHILD = t.COUNT_DEATH_CHILD
+
+--Те, у которых стало меньше 3 детей из-за исполнения 18-ти летия ребенку.
+INSERT INTO #WHO_STOPPED_MANY_CHILD_FAMILY (MOTHER_OUID, FATHER_OUID, STOP_DATE, TYPE_STOP_DATE)
+SELECT 
+    t.MOTHER_OUID,
+    t.FATHER_OUID,
+    t.STOP_DATE,
+    1 AS TYPE_STOP_DATE
 FROM (
     SELECT
-        family.PERSONOUID   AS PERSONOUID,
-        COUNT(*)            AS COUNT_DEATH_CHILD
-    FROM #MANY_CHILD_FAMILY family --Семьи, имеющие 3 и более детей.
-    ----Родственные связи.
-        INNER JOIN #RELATIONSHIP relationship
-            ON relationship.PERSONOUID_1 = family.PERSONOUID
-    ----Личное дело родственника.
+        family.MOTHER_OUID  AS MOTHER_OUID,
+        family.FATHER_OUID  AS FATHER_OUID,
+        CAST(
+            CAST(YEAR(tableAge.BIRTHDATE) + 18 AS VARCHAR) + '-' + 
+            CAST(MONTH(tableAge.BIRTHDATE) AS VARCHAR) + '-' + 
+            CAST(DAY(tableAge.BIRTHDATE) AS VARCHAR) AS VARCHAR
+        ) AS STOP_DATE,
+        --Самого младшего из тех, кому исполнилось 18.
+        ROW_NUMBER() OVER (PARTITION BY family.MOTHER_OUID, family.FATHER_OUID ORDER BY tableAge.BIRTHDATE DESC) AS gnum 
+    FROM #MANY_CHILD_FAMILY family
+    ----Родители и их дети.
+        INNER JOIN #MOTHER_AND_FATHER motherAndFather
+            ON ISNULL(motherAndFather.MOTHER_OUID, 0) = ISNULL(family.MOTHER_OUID, 0)
+                OR ISNULL(motherAndFather.FATHER_OUID, 0) = ISNULL(family.FATHER_OUID, 0)
+    ----Возраст ребенка.
         INNER JOIN #TABLE_AGE tableAge
-            ON tableAge.DEATH_DATE BETWEEN @startDateReport AND @endDateReport  --Умер в период.
-                AND tableAge.PERSONOUID = relationship.PERSONOUID_2             --Связка с родственными связями.  
-    GROUP BY family.PERSONOUID
+            ON tableAge.PERSONOUID = motherAndFather.CHILD_OUID
+                AND tableAge.AGE_IN_DATE_FROM <= 17                 --В начале периода меньше 18.
+                AND tableAge.AGE_IN_DATE_TO >= 18                   --В конце периода больше 18.
+    WHERE family.COUNT_GROWN_UP_CHILD > 0                           --Есть дети, которым исполнилось 18 лет.
+        AND family.COUNT_CHILD - family.COUNT_GROWN_UP_CHILD < 3    --После исполнения 18 лет стало меньше трех детей.
+        AND family.MOTHER_OUID NOT IN (                              --Нет документа, оканчивающихся в указанный период.
+            SELECT 
+                PERSONOUID 
+            FROM #MANY_CHILD_DOC manyChildDoc
+            WHERE manyChildDoc.DOC_END_DATE BETWEEN @startDateReport AND @endDateReport --Документ окончил действие в период.
+                AND manyChildDoc.DOC_INDEX_DESC = 1                                     --Больше документов не было.
+        )
+        AND family.FATHER_OUID NOT IN (                              --Нет документа, оканчивающихся в указанный период.
+            SELECT 
+                PERSONOUID 
+            FROM #MANY_CHILD_DOC manyChildDoc
+            WHERE manyChildDoc.DOC_END_DATE BETWEEN @startDateReport AND @endDateReport --Документ окончил действие в период.
+                AND manyChildDoc.DOC_INDEX_DESC = 1                                     --Больше документов не было.
+        )
 ) t
-    INNER JOIN #MANY_CHILD_FAMILY family
-        ON t.PERSONOUID = family.PERSONOUID
+WHERE t.gnum = 1
 
---Убираем NULL.
-UPDATE family
-SET family.COUNT_BORN_CHILD = 0
-FROM #MANY_CHILD_FAMILY family --Семьи, имеющие 3 и более детей.
-WHERE COUNT_BORN_CHILD IS NULL
+--Те, у которых стало меньше 3 детей из-за смерти детей.
+INSERT INTO #WHO_STOPPED_MANY_CHILD_FAMILY (MOTHER_OUID, FATHER_OUID, STOP_DATE, TYPE_STOP_DATE)
+SELECT 
+    t.MOTHER_OUID,
+    t.FATHER_OUID,
+    t.STOP_DATE,
+    2 AS TYPE_STOP_DATE
+FROM (
+    SELECT
+        family.MOTHER_OUID  AS MOTHER_OUID,
+        family.FATHER_OUID  AS FATHER_OUID,
+        tableAge.DEATH_DATE AS STOP_DATE,
+        --Самого младшего из тех, кому исполнилось 18.
+        ROW_NUMBER() OVER (PARTITION BY family.MOTHER_OUID, family.FATHER_OUID ORDER BY tableAge.DEATH_DATE DESC) AS gnum 
+    FROM #MANY_CHILD_FAMILY family
+    ----Родители и их дети.
+        INNER JOIN #MOTHER_AND_FATHER motherAndFather
+            ON ISNULL(motherAndFather.MOTHER_OUID, 0) = ISNULL(family.MOTHER_OUID, 0)
+                OR ISNULL(motherAndFather.FATHER_OUID, 0) = ISNULL(family.FATHER_OUID, 0)
+    ----Возраст ребенка.
+        INNER JOIN #TABLE_AGE tableAge
+            ON tableAge.PERSONOUID = motherAndFather.CHILD_OUID
+                AND tableAge.DEATH_DATE BETWEEN @startDateReport AND @endDateReport
+    WHERE family.COUNT_DEATH_CHILD > 0                          --Есть дети, которым исполнилось 18 лет.
+        AND family.COUNT_CHILD - family.COUNT_DEATH_CHILD < 3   --После смерти стало меньше 3 детей.
+        AND family.MOTHER_OUID NOT IN (                              --Нет документа, оканчивающихся в указанный период.
+            SELECT 
+                PERSONOUID 
+            FROM #MANY_CHILD_DOC manyChildDoc
+            WHERE manyChildDoc.DOC_END_DATE BETWEEN @startDateReport AND @endDateReport --Документ окончил действие в период.
+                AND manyChildDoc.DOC_INDEX_DESC = 1                                     --Больше документов не было.
+        )
+        AND family.FATHER_OUID NOT IN (                              --Нет документа, оканчивающихся в указанный период.
+            SELECT 
+                PERSONOUID 
+            FROM #MANY_CHILD_DOC manyChildDoc
+            WHERE manyChildDoc.DOC_END_DATE BETWEEN @startDateReport AND @endDateReport --Документ окончил действие в период.
+                AND manyChildDoc.DOC_INDEX_DESC = 1                                     --Больше документов не было.
+        )
+) t
+WHERE t.gnum = 1
+;
 
---Убираем NULL.
-UPDATE family
-SET family.COUNT_GROWN_UP_CHILD = 0
-FROM #MANY_CHILD_FAMILY family --Семьи, имеющие 3 и более детей.
-WHERE COUNT_GROWN_UP_CHILD IS NULL
 
---Убираем NULL.
-UPDATE family
-SET family.COUNT_DEATH_CHILD = 0
-FROM #MANY_CHILD_FAMILY family --Семьи, имеющие 3 и более детей.
-WHERE COUNT_DEATH_CHILD IS NULL
+------------------------------------------------------------------------------------------------------------------------------
+
+--Выбор последнего СДД из заявлений.
+INSERT INTO #LAST_SDD(MOTHER_OUID, FATHER_OUID, SDD, DATE_REG, SERV_TYPE) 
+SELECT  
+    t.MOTHER_OUID,
+    t.FATHER_OUID,
+    t.SDD,
+    t.DATE_REG,
+    t.SERV_TYPE
+FROM (
+    SELECT 
+        family.MOTHER_OUID                  AS MOTHER_OUID,
+        family.FATHER_OUID                  AS FATHER_OUID,
+        petition.A_SDD                      AS SDD,
+        CONVERT(DATE, appeal.A_DATE_REG)    AS DATE_REG,
+        petition.A_MSP                      AS SERV_TYPE,
+        --Для отбора последнего.
+        ROW_NUMBER() OVER (PARTITION BY family.MOTHER_OUID, family.FATHER_OUID ORDER BY appeal.A_DATE_REG DESC) AS gnum 
+    FROM #MANY_CHILD_FAMILY family --Многодетная семья.
+    ----Заявления.
+        INNER JOIN WM_PETITION petition --Заявления.
+            ON petition.A_MSPHOLDER = ISNULL(family.MOTHER_OUID, 0)
+                OR petition.A_MSPHOLDER = ISNULL(family.FATHER_OUID, 0)
+    ----Обращение гражданина.		
+        INNER JOIN WM_APPEAL_NEW appeal     
+            ON appeal.OUID = petition.OUID --Связка с заявлением.										 
+    WHERE appeal.A_STATUS = 10              --Статус в БД "Действует".
+        AND ISNULL(petition.A_SDD, 0) <> 0  --СДД есть и он не нулевой.
+) t
+WHERE t.gnum = 1	    
+;
 
 
 ------------------------------------------------------------------------------------------------------------------------------    
@@ -254,330 +622,62 @@ FROM (
         actDocuments.DOCUMENTSERIES     AS PASSPORT_SERIES,
         actDocuments.DOCUMENTSNUMBER    AS PASSPORT_NUMBER,
         ROW_NUMBER() OVER (PARTITION BY actDocuments.PERSONOUID ORDER BY actDocuments.ISSUEEXTENSIONSDATE DESC) AS gnum 
-    FROM WM_ACTDOCUMENTS actDocuments --Действующие документы.     
+    FROM WM_ACTDOCUMENTS actDocuments --Действующие документы.    
+        INNER JOIN #MANY_CHILD_FAMILY family --Многодетная семья.
+            ON family.MOTHER_OUID = actDocuments.PERSONOUID
+                OR family.FATHER_OUID = actDocuments.PERSONOUID
     WHERE actDocuments.A_STATUS = 10                    --Статус в БД "Действует".
         AND actDocuments.A_DOCSTATUS = 1                --Действующий документ.
         AND actDocuments.DOCUMENTSTYPE IN (2720, 2277)  --Паспорт гражданина России, иностранный паспорт.
 ) t
 WHERE t.gnum = 1    
+;
     
     
-------------------------------------------------------------------------------------------------------------------------------
-
-
---Выборка документов многодетной семьи.
-INSERT INTO #MANY_CHILD_DOC (PERSONOUID, DOC_OUID, DOC_TYPE, DOC_START_DATE, DOC_END_DATE, DOC_INDEX_INC, DOC_INDEX_DESC)
-SELECT 
-    actDocuments.PERSONOUID                             AS PERSONOUID,
-    actDocuments.OUID                                   AS DOC_OUID,
-    actDocuments.DOCUMENTSTYPE                          AS DOC_TYPE,
-    CONVERT(DATE, actDocuments.ISSUEEXTENSIONSDATE)     AS DOC_START_DATE,
-    CONVERT(DATE, actDocuments.COMPLETIONSACTIONDATE)   AS DOC_END_DATE,
-    ROW_NUMBER() OVER (PARTITION BY actDocuments.PERSONOUID ORDER BY actDocuments.ISSUEEXTENSIONSDATE)      AS DOC_INDEX_INC,
-    ROW_NUMBER() OVER (PARTITION BY actDocuments.PERSONOUID ORDER BY actDocuments.ISSUEEXTENSIONSDATE DESC) AS DOC_INDEX_DESC 
-FROM WM_ACTDOCUMENTS actDocuments --Действующие документы.
-WHERE actDocuments.A_STATUS = 10                    --Статус в БД "Действует".
-    AND actDocuments.DOCUMENTSTYPE IN (2858)  --Удостоверение многодетной малообеспеченной семьи.
-
-
-------------------------------------------------------------------------------------------------------------------------------    
-
-
---Те, которые, по идее, получили первый документ в период.
-INSERT INTO #WHO_BECAME_MANY_CHILD_FAMILY(PERSONOUID, START_DATE, TYPE_START_DATE)
-SELECT 
-    t.PERSONOUID,
-    t.START_DATE,
-    0 AS TYPE_START_DATE
-FROM (
-    SELECT  
-        manyChildDoc.PERSONOUID     AS PERSONOUID,
-        manyChildDoc.DOC_START_DATE AS START_DATE,
-        ROW_NUMBER() OVER (PARTITION BY manyChildDoc.PERSONOUID ORDER BY manyChildDoc.DOC_START_DATE) AS gnum 
-    FROM #MANY_CHILD_FAMILY family
-        INNER JOIN #MANY_CHILD_DOC manyChildDoc
-            ON manyChildDoc.PERSONOUID = family.PERSONOUID
-    WHERE family.COUNT_BORN_CHILD > 0                                               --Есть рожденный ребенок в период.
-        AND family.COUNT_CHILD - family.COUNT_BORN_CHILD < 3                        --До рождение ребенков в период было меньше 3 детей в семье. 
-        AND manyChildDoc.DOC_START_DATE BETWEEN @startDateReport AND @endDateReport --Документ начал действие в период.
-) t
-WHERE t.gnum = 1
-
---Те, которые, по идее не получили документ, но третий ребенок все-таки родился.
-INSERT INTO #WHO_BECAME_MANY_CHILD_FAMILY(PERSONOUID, START_DATE, TYPE_START_DATE)
-SELECT 
-    t.PERSONOUID,
-    t.START_DATE,
-    1 AS TYPE_START_DATE
-FROM (
-    SELECT  
-        family.PERSONOUID   AS PERSONOUID,
-        tableAge.BIRTHDATE  AS START_DATE,
-        --Самого старшего из родившихся.
-        ROW_NUMBER() OVER (PARTITION BY family.PERSONOUID ORDER BY tableAge.BIRTHDATE) AS gnum 
-    FROM #MANY_CHILD_FAMILY family
-    ----Ребенок.
-        INNER JOIN #RELATIONSHIP relationship
-            ON relationship.PERSONOUID_1 = family.PERSONOUID
-    ----Возраст ребенка.
-        INNER JOIN #TABLE_AGE tableAge
-            ON tableAge.PERSONOUID = relationship.PERSONOUID_2
-                AND tableAge.BIRTHDATE BETWEEN @startDateReport AND @endDateReport  --Родился в период отчета.
-    WHERE family.COUNT_BORN_CHILD > 0                           --Есть рожденный ребенок в период.
-        AND family.COUNT_CHILD - family.COUNT_BORN_CHILD < 3    --До рождение ребенков в период было меньше 3 детей в семье. 
-        AND family.PERSONOUID NOT IN (                          --Нет документа, начавшегося в указанный период.
-            SELECT 
-                PERSONOUID 
-            FROM #MANY_CHILD_DOC manyChildDoc
-            WHERE manyChildDoc.DOC_START_DATE BETWEEN @startDateReport AND @endDateReport 
-        )
-) t
-WHERE t.gnum = 1 --Самого старшего из родившихся.
-
-
-------------------------------------------------------------------------------------------------------------------------------
-
-
---Те, у которых закончилось действие документа в период.
-INSERT INTO #WHO_STOPPED_MANY_CHILD_FAMILY (PERSONOUID, STOP_DATE, TYPE_STOP_DATE)
-SELECT 
-    t.PERSONOUID,
-    t.STOP_DATE,
-    0 AS TYPE_STOP_DATE
-FROM (
-    SELECT
-        manyChildDoc.PERSONOUID     AS PERSONOUID,
-        manyChildDoc.DOC_END_DATE   AS STOP_DATE,
-        ROW_NUMBER() OVER (PARTITION BY manyChildDoc.PERSONOUID ORDER BY manyChildDoc.DOC_END_DATE DESC) AS gnum 
-    FROM #MANY_CHILD_FAMILY family
-        INNER JOIN #MANY_CHILD_DOC manyChildDoc
-            ON manyChildDoc.PERSONOUID = family.PERSONOUID
-    WHERE family.COUNT_GROWN_UP_CHILD > 0                                           --Есть дети, которым исполнилось 18 лет.
-        AND family.COUNT_CHILD - family.COUNT_GROWN_UP_CHILD < 3                    --После исполнения 18 лет стало меньше трех детей.
-        AND manyChildDoc.DOC_END_DATE BETWEEN @startDateReport AND @endDateReport   --Документ окончил действие в период.
-        AND manyChildDoc.DOC_INDEX_DESC = 1                                         --Больше документов не было.
-) t
-WHERE t.gnum = 1
-
---Те, у которых стало меньше 3 детей из-за исполнения 18-ти летия ребенку.
-INSERT INTO #WHO_STOPPED_MANY_CHILD_FAMILY (PERSONOUID, STOP_DATE, TYPE_STOP_DATE)
-SELECT 
-    t.PERSONOUID,
-    t.STOP_DATE,
-    1 AS TYPE_STOP_DATE
-FROM (
-    SELECT
-        family.PERSONOUID AS PERSONOUID,
-        CAST(
-            CAST(YEAR(tableAge.BIRTHDATE) + 18 AS VARCHAR) + '-' + 
-            CAST(MONTH(tableAge.BIRTHDATE) AS VARCHAR) + '-' + 
-            CAST(DAY(tableAge.BIRTHDATE) AS VARCHAR) AS VARCHAR
-        ) AS STOP_DATE,
-        --Самого младшего из тех, кому исполнилось 18.
-        ROW_NUMBER() OVER (PARTITION BY family.PERSONOUID ORDER BY tableAge.BIRTHDATE DESC) AS gnum 
-    FROM #MANY_CHILD_FAMILY family
-    ----Ребенок.
-        INNER JOIN #RELATIONSHIP relationship
-            ON relationship.PERSONOUID_1 = family.PERSONOUID
-    ----Возраст ребенка.
-        INNER JOIN #TABLE_AGE tableAge
-            ON tableAge.PERSONOUID = relationship.PERSONOUID_2
-                AND tableAge.AGE_IN_DATE_FROM <= 17                 --В начале периода меньше 18.
-                AND tableAge.AGE_IN_DATE_TO >= 18                   --В конце периода больше 18.
-    WHERE family.COUNT_GROWN_UP_CHILD > 0                           --Есть дети, которым исполнилось 18 лет.
-        AND family.COUNT_CHILD - family.COUNT_GROWN_UP_CHILD < 3    --После исполнения 18 лет стало меньше трех детей.
-        AND family.PERSONOUID NOT IN (                              --Нет документа, оканчивающихся в указанный период.
-            SELECT 
-                PERSONOUID 
-            FROM #MANY_CHILD_DOC manyChildDoc
-            WHERE manyChildDoc.DOC_END_DATE BETWEEN @startDateReport AND @endDateReport --Документ окончил действие в период.
-                AND manyChildDoc.DOC_INDEX_DESC = 1                                     --Больше документов не было.
-        )
-) t
-WHERE t.gnum = 1
-
---Те, у которых стало меньше 3 детей из-за смерти детей.
-INSERT INTO #WHO_STOPPED_MANY_CHILD_FAMILY (PERSONOUID, STOP_DATE, TYPE_STOP_DATE)
-SELECT 
-    t.PERSONOUID,
-    t.STOP_DATE,
-    2 AS TYPE_STOP_DATE
-FROM (
-    SELECT
-        family.PERSONOUID   AS PERSONOUID,
-        tableAge.DEATH_DATE AS STOP_DATE,
-        --Самого младшего из тех, кому исполнилось 18.
-        ROW_NUMBER() OVER (PARTITION BY family.PERSONOUID ORDER BY tableAge.DEATH_DATE DESC) AS gnum 
-    FROM #MANY_CHILD_FAMILY family
-    ----Ребенок.
-        INNER JOIN #RELATIONSHIP relationship
-            ON relationship.PERSONOUID_1 = family.PERSONOUID
-    ----Возраст ребенка.
-        INNER JOIN #TABLE_AGE tableAge
-            ON tableAge.PERSONOUID = relationship.PERSONOUID_2
-                AND tableAge.DEATH_DATE BETWEEN @startDateReport AND @endDateReport
-    WHERE family.COUNT_DEATH_CHILD > 0                          --Есть дети, которым исполнилось 18 лет.
-        AND family.COUNT_CHILD - family.COUNT_DEATH_CHILD < 3   --После смерти стало меньше 3 детей.
-        AND family.PERSONOUID NOT IN (                          --Нет документа, оканчивающихся в указанный период.
-            SELECT 
-                PERSONOUID 
-            FROM #MANY_CHILD_DOC manyChildDoc
-            WHERE manyChildDoc.DOC_END_DATE BETWEEN @startDateReport AND @endDateReport --Документ окончил действие в период.
-                AND manyChildDoc.DOC_INDEX_DESC = 1                                     --Больше документов не было.
-        )
-) t
-WHERE t.gnum = 1
-
-------------------------------------------------------------------------------------------------------------------------------
-
-
---Выбираем супруга/супруги, если по какой-то причине у него/нее не указаны дети.
-INSERT INTO #MANY_CHILD_FAMILY (PERSONOUID, COUNT_CHILD, COUNT_BORN_CHILD, COUNT_GROWN_UP_CHILD, COUNT_DEATH_CHILD)
-SELECT 
-    relationships.A_ID2         AS PERSONOUID,
-    family.COUNT_CHILD          AS COUNT_CHILD,
-    family.COUNT_BORN_CHILD     AS COUNT_BORN_CHILD,
-    family.COUNT_GROWN_UP_CHILD AS COUNT_GROWN_UP_CHILD,
-    family.COUNT_DEATH_CHILD    AS COUNT_DEATH_CHILD
-FROM #MANY_CHILD_FAMILY family --Многодетная семья.
-----Родственные связи.
-    INNER JOIN WM_RELATEDRELATIONSHIPS relationships
-        ON relationships.A_ID1 = family.PERSONOUID              --Связка с многодетной семьей.
-            AND relationships.A_STATUS = 10                     --Статус в БД "Действует".
-            AND relationships.A_RELATED_RELATIONSHIP IN (8, 9)  --Муж, Жена.
-WHERE relationships.A_ID2 NOT IN (  --Супруга/Супруги нет в списке многодетных.
-    SELECT 
-        PERSONOUID 
-    FROM #MANY_CHILD_FAMILY 
-    WHERE PERSONOUID IS NOT NULL
-) 
-
---Выбираем супруга/супруги, если по какой-то причине у него/нее не указаны дети.
-INSERT INTO #WHO_BECAME_MANY_CHILD_FAMILY(PERSONOUID, START_DATE, TYPE_START_DATE)
-SELECT 
-    relationships.A_ID2             AS PERSONOUID,
-    becameManyChild.START_DATE      AS START_DATE,
-    becameManyChild.TYPE_START_DATE AS TYPE_START_DATE
-FROM #MANY_CHILD_FAMILY family --Многодетная семья.
-----Родственные связи.
-    INNER JOIN WM_RELATEDRELATIONSHIPS relationships
-        ON relationships.A_ID1 = family.PERSONOUID              --Связка с многодетной семьей.
-            AND relationships.A_STATUS = 10                     --Статус в БД "Действует".
-            AND relationships.A_RELATED_RELATIONSHIP IN (8, 9)  --Муж, Жена.
-    INNER JOIN #WHO_BECAME_MANY_CHILD_FAMILY becameManyChild
-        ON becameManyChild.PERSONOUID = family.PERSONOUID
-WHERE relationships.A_ID2 NOT IN (  --Супруга/Супруги нет в списке многодетных.
-    SELECT 
-        PERSONOUID 
-    FROM #WHO_BECAME_MANY_CHILD_FAMILY 
-    WHERE PERSONOUID IS NOT NULL
-) 
-
---Выбираем супруга/супруги, если по какой-то причине у него/нее не указаны дети.
-INSERT INTO #WHO_STOPPED_MANY_CHILD_FAMILY (PERSONOUID, STOP_DATE, TYPE_STOP_DATE)
-SELECT 
-    relationships.A_ID2             AS PERSONOUID,
-    stoppedManyChild.STOP_DATE      AS STOP_DATE,
-    stoppedManyChild.TYPE_STOP_DATE AS TYPE_STOP_DATE
-FROM #MANY_CHILD_FAMILY family --Многодетная семья.
-----Родственные связи.
-    INNER JOIN WM_RELATEDRELATIONSHIPS relationships
-        ON relationships.A_ID1 = family.PERSONOUID              --Связка с многодетной семьей.
-            AND relationships.A_STATUS = 10                     --Статус в БД "Действует".
-            AND relationships.A_RELATED_RELATIONSHIP IN (8, 9)  --Муж, Жена.
-    INNER JOIN #WHO_STOPPED_MANY_CHILD_FAMILY stoppedManyChild
-        ON stoppedManyChild.PERSONOUID = family.PERSONOUID
-WHERE relationships.A_ID2 NOT IN (  --Супруга/Супруги нет в списке многодетных.
-    SELECT 
-        PERSONOUID 
-    FROM #WHO_STOPPED_MANY_CHILD_FAMILY 
-    WHERE PERSONOUID IS NOT NULL
-) 
-
-
-------------------------------------------------------------------------------------------------------------------------------
-
---Выбор последнего СДД у идентифицированных людей.
-INSERT INTO #LAST_SDD(PERSONOUID, SDD, DATE_REG, SERV_TYPE) 
-SELECT  
-    t.PERSONOUID,
-    t.SDD,
-    t.DATE_REG,
-    t.SERV_TYPE
-FROM (
-    SELECT 
-        family.PERSONOUID                   AS PERSONOUID,
-        petition.A_SDD                      AS SDD,
-        CONVERT(DATE, appeal.A_DATE_REG)    AS DATE_REG,
-        petition.A_MSP                      AS SERV_TYPE,
-        --Для отбора последнего.
-        ROW_NUMBER() OVER (PARTITION BY family.PERSONOUID ORDER BY appeal.A_DATE_REG DESC) AS gnum 
-    FROM #MANY_CHILD_FAMILY family --Многодетная семья.
-    ----Заявления.
-        INNER JOIN WM_PETITION petition --Заявления.
-            ON petition.A_MSPHOLDER = family.PERSONOUID
-    ----Обращение гражданина.		
-        INNER JOIN WM_APPEAL_NEW appeal     
-            ON appeal.OUID = petition.OUID --Связка с заявлением.										 
-    WHERE appeal.A_STATUS = 10                                  --Статус в БД "Действует".
-        AND petition.A_SDD IS NOT NULL AND petition.A_SDD <> 0  --СДД есть и он не нулевой.
-) t
-WHERE t.gnum = 1	
-
---Вставка супруге/супругу СДД, если его нет в списке последних СДД.
-INSERT INTO #LAST_SDD(PERSONOUID, SDD, DATE_REG, SERV_TYPE) 
-SELECT
-    relationships.A_ID2 AS PERSONOUID,
-    lastSDD.SDD         AS SDD,
-    lastSDD.DATE_REG    AS DATE_REG,
-    lastSDD.SERV_TYPE   AS SERV_TYPE
-FROM #MANY_CHILD_FAMILY family --Многодетная семья.
-----Родственные связи.
-    INNER JOIN WM_RELATEDRELATIONSHIPS relationships
-        ON relationships.A_ID1 = family.PERSONOUID              --Связка с многодетной семьей.
-            AND relationships.A_STATUS = 10                     --Статус в БД "Действует".
-            AND relationships.A_RELATED_RELATIONSHIP IN (8, 9)  --Муж, Жена.
-----Последний СДД.
-    INNER JOIN #LAST_SDD lastSDD
-        ON lastSDD.PERSONOUID = family.PERSONOUID
-WHERE relationships.A_ID2 NOT IN (  --Супруга/Супруги нет в списке последних СДД.
-    SELECT 
-        PERSONOUID 
-    FROM #LAST_SDD lastSDD
-    WHERE PERSONOUID IS NOT NULL
-)        
-	
-	
 ------------------------------------------------------------------------------------------------------------------------------
 
 
 --Финальная выборка.
 SELECT 
+    DENSE_RANK() OVER (ORDER BY family.MOTHER_OUID, family.FATHER_OUID )                        AS [Семья],
     CASE
         WHEN EXISTS(
             SELECT 
                 manyChildDoc.PERSONOUID 
             FROM #MANY_CHILD_DOC manyChildDoc 
-            WHERE manyChildDoc.PERSONOUID = personalCard.OUID       --СВязка с запросом извне. 
+            WHERE (manyChildDoc.PERSONOUID = family.MOTHER_OUID
+                    OR manyChildDoc.PERSONOUID = family.FATHER_OUID
+                )
                 AND manyChildDoc.DOC_START_DATE < @endDateReport    --Дата начала не позже конца периода отчета.
                 AND manyChildDoc.DOC_END_DATE > @startDateReport    --Дата окончания не раньше начала периода отчета.
+                AND manyChildDoc.DOC_TYPE = 2858
         )
         THEN 'Был'
         ELSE 'Нет'
-    END                                                                                         AS [Наличие УММС, УМС],
+    END                                                                                         AS [Наличие УММС],
+        CASE
+        WHEN EXISTS(
+            SELECT 
+                manyChildDoc.PERSONOUID 
+            FROM #MANY_CHILD_DOC manyChildDoc 
+            WHERE (manyChildDoc.PERSONOUID = family.MOTHER_OUID
+                    OR manyChildDoc.PERSONOUID = family.FATHER_OUID
+                )
+                AND manyChildDoc.DOC_START_DATE < @endDateReport    --Дата начала не позже конца периода отчета.
+                AND manyChildDoc.DOC_END_DATE > @startDateReport    --Дата окончания не раньше начала периода отчета.
+                AND manyChildDoc.DOC_TYPE = 2814
+        )
+        THEN 'Был'
+        ELSE 'Нет'
+    END                                                                                         AS [Наличие УМС],
     personalCard.OUID                                                                           AS [Личное дело],
     ISNULL(ISNULL(personalCard.A_SURNAME_STR,    fioSurname.A_NAME),    '')                     AS [Фамилия],
     ISNULL(ISNULL(personalCard.A_NAME_STR,       fioName.A_NAME),       '')                     AS [Имя],
     ISNULL(ISNULL(personalCard.A_SECONDNAME_STR, fioSecondname.A_NAME), '')                     AS [Отчество],
-    ISNULL(CONVERT(VARCHAR, personalCard.BIRTHDATE, 104), '')                                   AS [Дата рождения],        
+    ISNULL(CONVERT(VARCHAR, personalCard.BIRTHDATE, 104), '')                                   AS [Дата рождения], 
     ISNULL(personalCard.A_INN, '')                                                              AS [ИНН],
-    ISNULL(personalCard.A_SNILS, '')                                                            AS [СНИЛС],
-    CASE
-        WHEN addressLive.OUID   IS NOT NULL THEN addressLive.A_ADRTITLE
-        WHEN addressTemp.OUID   IS NOT NULL THEN addressTemp.A_ADRTITLE
-        WHEN addressReg.OUID    IS NOT NULL THEN addressReg.A_ADRTITLE
-        ELSE 'Нет'
-    END                                                                                         AS [Адрес],
+    ISNULL(personalCard.A_SNILS, '')                                                            AS [СНИЛС],  
+    ISNULL(addressReg.A_ADRTITLE, '')                                                           AS [Адрес регистрации], 
     ISNULL(passport.PASSPORT_SERIES, '')                                                        AS [Серия паспорта],
     ISNULL(passport.PASSPORT_NUMBER, '')                                                        AS [Номер паспорта],
     family.COUNT_CHILD                                                                          AS [Количество несовершеннолетних детей в 2020],
@@ -585,7 +685,7 @@ SELECT
     family.COUNT_GROWN_UP_CHILD                                                                 AS [Количество детей, достигших 18 летия в 2020],
     family.COUNT_DEATH_CHILD                                                                    AS [Количество умерших детей в 2020],
     ISNULL(CONVERT(VARCHAR, becameManyChildFamily.START_DATE, 104), '')                         AS [Дата начала признания многодетной семьей, в случае рождения ребенка в течение 2020 года],
-    CASE becameManyChildFamily.TYPE_START_DATE
+        CASE becameManyChildFamily.TYPE_START_DATE
         WHEN 0 THEN 'По документу'
         WHEN 1 THEN 'По фактическому рождению'
         ELSE ''
@@ -597,53 +697,62 @@ SELECT
         WHEN 2 THEN 'По фактической смерти'
         ELSE ''
     END                                                                                         AS [Причина окончания],
-    ISNULL(CONVERT(VARCHAR, lastSDD.SDD), '')                                                   AS [СДД],
-    ISNULL(CONVERT(VARCHAR, lastSDD.DATE_REG), '')                                              AS [Дата регистрации СДД],
-    ISNULL(typeServ.A_NAME, '')                                                                 AS [МСП]
-FROM #MANY_CHILD_FAMILY family
-----Личное дело гражданина.
-    INNER JOIN WM_PERSONAL_CARD personalCard 
-        ON personalCard.OUID = family.PERSONOUID
-        
-----Фамилия.
-    LEFT JOIN SPR_FIO_SURNAME fioSurname
-        ON fioSurname.OUID = personalCard.SURNAME --Связка с личным делом.
-----Имя.     
-    LEFT JOIN SPR_FIO_NAME fioName
-        ON fioName.OUID = personalCard.A_NAME --Связка с личным делом.      
-----Отчество.   
-    LEFT JOIN SPR_FIO_SECONDNAME fioSecondname
-        ON fioSecondname.OUID = personalCard.A_SECONDNAME --Связка с личным делом. 
- 
-----Адрес регистрации. 
-    LEFT JOIN WM_ADDRESS addressReg
-        ON addressReg.OUID = personalCard.A_REGFLAT --Связка с личным делом. 
-----Адрес проживания.
-    LEFT JOIN WM_ADDRESS addressLive
-        ON addressLive.OUID = personalCard.A_LIVEFLAT --Связка с личным делом. 
-----Адрес врменной регистрации.
-    LEFT JOIN WM_ADDRESS addressTemp
-        ON addressTemp.OUID = personalCard.A_TEMPREGFLAT --Связка с личным делом.
-        
-----Паспорта людей.
-    LEFT JOIN #PASSPORT_PEOPLE passport
-        ON passport.PERSONOUID = personalCard.OUID --Связка с личным делом.
-        
+    ISNULL(CONVERT(VARCHAR, lastSDD.SDD), '')                                                   AS [Размер последнего зарегистрированного СДД],
+    ISNULL(CONVERT(VARCHAR, lastSDD.DATE_REG), '')                                              AS [Дата регистрации последнего СДД],
+    ISNULL(typeServ.A_NAME, '')                                                                 AS [МСП, в котором указано последнее СДД]
+FROM WM_PERSONAL_CARD personalCard --Личное дело гражданина.
+----Многодетные семья.
+    INNER JOIN #MANY_CHILD_FAMILY family
+        ON family.MOTHER_OUID = personalCard.OUID
+            OR family.FATHER_OUID = personalCard.OUID
 ----Кто получил статус многодетной семьи.
     LEFT JOIN #WHO_BECAME_MANY_CHILD_FAMILY becameManyChildFamily
-        ON becameManyChildFamily.PERSONOUID = personalCard.OUID --Связка с личным делом.
+        ON ISNULL(becameManyChildFamily.MOTHER_OUID, 0) = ISNULL(family.MOTHER_OUID, 0)
+            AND ISNULL(becameManyChildFamily.FATHER_OUID, 0) = ISNULL(family.FATHER_OUID, 0)
 ----Кто потерял статус многодетной семьи.
     LEFT JOIN #WHO_STOPPED_MANY_CHILD_FAMILY stoppedManyChildFamily
-        ON stoppedManyChildFamily.PERSONOUID= personalCard.OUID --Связка с личным делом.
-   
+        ON ISNULL(stoppedManyChildFamily.MOTHER_OUID, 0) = ISNULL(family.MOTHER_OUID, 0)
+            AND ISNULL(stoppedManyChildFamily.FATHER_OUID, 0) = ISNULL(family.FATHER_OUID, 0)
 ----Последнее СДД.
     LEFT JOIN #LAST_SDD lastSDD
-        ON lastSDD.PERSONOUID = personalCard.OUID
+        ON ISNULL(lastSDD.MOTHER_OUID, 0) = ISNULL(family.MOTHER_OUID, 0)
+            AND ISNULL(lastSDD.FATHER_OUID, 0) = ISNULL(family.FATHER_OUID, 0)
 ----Наименование МСП.	
     LEFT JOIN PPR_SERV typeServ 
         ON typeServ.A_ID = lastSDD.SERV_TYPE 
-   
-ORDER BY ISNULL(ISNULL(personalCard.A_SURNAME_STR, fioSurname.A_NAME), ''),
-    ISNULL(ISNULL(personalCard.A_NAME_STR, fioName.A_NAME), ''),
-    ISNULL(ISNULL(personalCard.A_SECONDNAME_STR, fioSecondname.A_NAME), ''),
-    [Адрес]
+----Фамилия.
+    LEFT JOIN SPR_FIO_SURNAME fioSurname
+        ON fioSurname.OUID = personalCard.SURNAME 
+----Имя.     
+    LEFT JOIN SPR_FIO_NAME fioName
+        ON fioName.OUID = personalCard.A_NAME    
+----Отчество.   
+    LEFT JOIN SPR_FIO_SECONDNAME fioSecondname
+        ON fioSecondname.OUID = personalCard.A_SECONDNAME 
+----Паспорта людей.
+    LEFT JOIN #PASSPORT_PEOPLE passport
+        ON passport.PERSONOUID = personalCard.OUID --Связка с личным делом.
+----Адрес регистрации. 
+    LEFT JOIN WM_ADDRESS addressReg
+        ON addressReg.OUID = personalCard.A_REGFLAT --Связка с личным делом.
+;       
+        
+------------------------------------------------------------------------------------------------------------------------------
+
+
+--Удаление временных таблиц.
+IF OBJECT_ID('tempdb..#PERSONAL_CARD_DATE_OFF')         IS NOT NULL BEGIN DROP TABLE #PERSONAL_CARD_DATE_OFF            END --Даты снатия с учетов личных дел.
+IF OBJECT_ID('tempdb..#VALID_PERSONAL_CARD_FOR_REPORT') IS NOT NULL BEGIN DROP TABLE #VALID_PERSONAL_CARD_FOR_REPORT    END --Валидные личные дела для отчета.
+IF OBJECT_ID('tempdb..#TABLE_AGE')                      IS NOT NULL BEGIN DROP TABLE #TABLE_AGE                         END --Таблица возрастов.
+IF OBJECT_ID('tempdb..#PARENT_AND_CHILD')               IS NOT NULL BEGIN DROP TABLE #PARENT_AND_CHILD                  END --Таблица родственных связей людей.
+IF OBJECT_ID('tempdb..#HUSBAND_AND_WIFE')               IS NOT NULL BEGIN DROP TABLE #HUSBAND_AND_WIFE                  END --Таблица мужей и жен.
+IF OBJECT_ID('tempdb..#MOTHER_AND_FATHER')              IS NOT NULL BEGIN DROP TABLE #MOTHER_AND_FATHER                 END --Матерей и отцов.
+IF OBJECT_ID('tempdb..#MANY_CHILD_FAMILY')              IS NOT NULL BEGIN DROP TABLE #MANY_CHILD_FAMILY                 END --Таблица семей, имеющих 3 и более детей на момент периода.
+IF OBJECT_ID('tempdb..#MANY_CHILD_DOC')                 IS NOT NULL BEGIN DROP TABLE #MANY_CHILD_DOC                    END --Таблица удостоверений многодетной семьи и удостоверений многодетной малообеспеченной семьи.
+IF OBJECT_ID('tempdb..#WHO_BECAME_MANY_CHILD_FAMILY')   IS NOT NULL BEGIN DROP TABLE #WHO_BECAME_MANY_CHILD_FAMILY      END --Кто стал многодетной семьей в период.
+IF OBJECT_ID('tempdb..#WHO_STOPPED_MANY_CHILD_FAMILY')  IS NOT NULL BEGIN DROP TABLE #WHO_STOPPED_MANY_CHILD_FAMILY     END --Кто перестал быть многодетной семьей в период.
+IF OBJECT_ID('tempdb..#LAST_SDD')                       IS NOT NULL BEGIN DROP TABLE #LAST_SDD                          END --Последнее зарегестрированное СДД.
+IF OBJECT_ID('tempdb..#PASSPORT_PEOPLE')                IS NOT NULL BEGIN DROP TABLE #PASSPORT_PEOPLE                   END --Таблица поспартов людей.
+
+
+------------------------------------------------------------------------------------------------------------------------------ 
