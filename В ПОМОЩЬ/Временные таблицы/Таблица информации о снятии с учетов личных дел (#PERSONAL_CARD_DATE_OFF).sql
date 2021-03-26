@@ -27,10 +27,10 @@ SELECT
     t.REASON_OFF
 FROM (
     SELECT 
-        CONVERT(DATE, reasonOff.A_DATE)         AS OFF_DATE,
-        personalCard.OUID                       AS PERSONOUID,
-        reasonOff.A_NAME                        AS REASON_OFF,
-        CONVERT(DATE, reasonOff.A_DATEREPEATIN) AS RETURN_DATE,
+        CONVERT(DATE, ISNULL(reasonOff.A_DATE, reasonOff.A_CREATEDATE)) AS OFF_DATE,
+        personalCard.OUID                                               AS PERSONOUID,
+        reasonOff.A_NAME                                                AS REASON_OFF,
+        CONVERT(DATE, reasonOff.A_DATEREPEATIN)                         AS RETURN_DATE,
         --Для отбора последнего снятия.
         ROW_NUMBER() OVER (PARTITION BY personalCard.OUID ORDER BY reasonOff.A_DATE DESC) AS gnum 
     FROM WM_REASON reasonOff --Снятие с учета гражданина.
