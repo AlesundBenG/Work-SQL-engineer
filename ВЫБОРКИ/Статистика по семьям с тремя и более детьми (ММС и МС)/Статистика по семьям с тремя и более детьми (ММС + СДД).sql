@@ -26,7 +26,7 @@ IF OBJECT_ID('tempdb..#WHO_BECAME_MANY_CHILD_FAMILY')   IS NOT NULL BEGIN DROP T
 IF OBJECT_ID('tempdb..#WHO_STOPPED_MANY_CHILD_FAMILY')  IS NOT NULL BEGIN DROP TABLE #WHO_STOPPED_MANY_CHILD_FAMILY     END --Кто перестал быть многодетной семьей в период.
 IF OBJECT_ID('tempdb..#LAST_SDD')                       IS NOT NULL BEGIN DROP TABLE #LAST_SDD                          END --Последнее зарегестрированное СДД.
 IF OBJECT_ID('tempdb..#PASSPORT_PEOPLE')                IS NOT NULL BEGIN DROP TABLE #PASSPORT_PEOPLE                   END --Таблица поспартов людей.
-
+IF OBJECT_ID('tempdb..#LIST_CHILD_IN_FAMILY')           IS NOT NULL BEGIN DROP TABLE #LIST_CHILD_IN_FAMILY              END --Список детей в семье. (Работает медленно)
 
 ------------------------------------------------------------------------------------------------------------------------------
 
@@ -98,6 +98,10 @@ CREATE TABLE #PASSPORT_PEOPLE (
     PERSONOUID      INT,            --Идентификатор личного дела.    
     PASSPORT_SERIES VARCHAR(50),    --Серия паспорта.
     PASSPORT_NUMBER VARCHAR(50),    --Номер паспорта.
+)
+CREATE TABLE #LIST_CHILD_IN_FAMILY (
+    FAMILY_ID   INT,            --Идентификатор семьи.
+    LIST_CHILD  VARCHAR(1000),  --Список детей в семье.
 )
 
 
@@ -671,6 +675,31 @@ WHERE lastSDD.gnum = 1
 ------------------------------------------------------------------------------------------------------------------------------    
 
 
+--Формирование списка детей в семье (Лучше закоментировать, если не нужен, так как выполняется долго).
+INSERT INTO #LIST_CHILD_IN_FAMILY (FAMILY_ID, LIST_CHILD)
+SELECT
+    family.FAMILY_ID,
+    STUFF((
+        SELECT 
+            '&СИМВОЛ(10)&' + personalCard.A_TITLE 
+        FROM #MANY_CHILD_FAMILY family2 
+        ----Родители и их дети.
+            INNER JOIN #MOTHER_AND_FATHER motherAndFather
+                ON motherAndFather.MOTHER_OUID = family2.MOTHER_OUID
+                    AND motherAndFather.FATHER_OUID = family2.FATHER_OUID
+        ----Личное дело гражданина.
+            INNER JOIN WM_PERSONAL_CARD personalCard 
+                ON personalCard.OUID = motherAndFather.CHILD_OUID          
+        WHERE family.FAMILY_ID = family2.FAMILY_ID 
+        FOR XML PATH ('')
+        ), 1, 1, ''
+    ) AS LIST_CHILD     
+FROM #MANY_CHILD_FAMILY family
+
+
+------------------------------------------------------------------------------------------------------------------------------
+
+
 --Финальная выборка.
 SELECT 
     family.FAMILY_ID                                                                            AS [Семья],
@@ -711,6 +740,7 @@ SELECT
     ISNULL(passport.PASSPORT_SERIES, '')                                                        AS [Серия паспорта],
     ISNULL(passport.PASSPORT_NUMBER, '')                                                        AS [Номер паспорта],
     family.COUNT_CHILD                                                                          AS [Количество несовершеннолетних детей в 2020],
+    ISNULL(listChild.LIST_CHILD, 'Показ отключен')                                              AS [Список детей],
     family.COUNT_BORN_CHILD                                                                     AS [Количество рожденных детей в 2020],
     family.COUNT_GROWN_UP_CHILD                                                                 AS [Количество детей, достигших 18 летия в 2020],
     family.COUNT_DEATH_CHILD                                                                    AS [Количество умерших детей в 2020],
@@ -762,7 +792,11 @@ FROM WM_PERSONAL_CARD personalCard --Личное дело гражданина.
 ----Адрес регистрации. 
     LEFT JOIN WM_ADDRESS addressReg
         ON addressReg.OUID = personalCard.A_REGFLAT
+----Список детей в семье.
+    LEFT JOIN #LIST_CHILD_IN_FAMILY listChild
+        ON listChild.FAMILY_ID = family.FAMILY_ID
 ;       
+        
         
 ------------------------------------------------------------------------------------------------------------------------------
 
@@ -780,6 +814,6 @@ IF OBJECT_ID('tempdb..#WHO_BECAME_MANY_CHILD_FAMILY')   IS NOT NULL BEGIN DROP T
 IF OBJECT_ID('tempdb..#WHO_STOPPED_MANY_CHILD_FAMILY')  IS NOT NULL BEGIN DROP TABLE #WHO_STOPPED_MANY_CHILD_FAMILY     END --Кто перестал быть многодетной семьей в период.
 IF OBJECT_ID('tempdb..#LAST_SDD')                       IS NOT NULL BEGIN DROP TABLE #LAST_SDD                          END --Последнее зарегестрированное СДД.
 IF OBJECT_ID('tempdb..#PASSPORT_PEOPLE')                IS NOT NULL BEGIN DROP TABLE #PASSPORT_PEOPLE                   END --Таблица поспартов людей.
-
+IF OBJECT_ID('tempdb..#LIST_CHILD_IN_FAMILY')           IS NOT NULL BEGIN DROP TABLE #LIST_CHILD_IN_FAMILY              END --Список детей в семье. (Работает медленно)
 
 ------------------------------------------------------------------------------------------------------------------------------ 
