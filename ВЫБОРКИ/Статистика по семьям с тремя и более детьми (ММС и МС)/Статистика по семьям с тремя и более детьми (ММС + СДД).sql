@@ -468,12 +468,12 @@ WHERE t.gnum = 1
 INSERT INTO #WHO_BECAME_MANY_CHILD_FAMILY(FAMILY_ID, START_DATE, TYPE_START_DATE)
 SELECT 
     t.FAMILY_ID,
-    t.STOP_DATE,
+    t.START_DATE,
     0 AS TYPE_STOP_DATE
 FROM (
     SELECT
         family.FAMILY_ID            AS FAMILY_ID,
-        manyChildDoc.DOC_END_DATE   AS STOP_DATE,
+        manyChildDoc.DOC_START_DATE AS START_DATE,
         ROW_NUMBER() OVER (PARTITION BY family.FAMILY_ID ORDER BY manyChildDoc.DOC_END_DATE DESC) AS gnum 
     FROM #MANY_CHILD_FAMILY family --Многодетные семьи.
     ----Документы, подтверждающие многодетность.
@@ -681,7 +681,7 @@ SELECT
     family.FAMILY_ID,
     STUFF((
         SELECT 
-            '&СИМВОЛ(10)&' + personalCard.A_TITLE 
+            ';' + personalCard.A_TITLE
         FROM #MANY_CHILD_FAMILY family2 
         ----Родители и их дети.
             INNER JOIN #MOTHER_AND_FATHER motherAndFather
@@ -695,6 +695,11 @@ SELECT
         ), 1, 1, ''
     ) AS LIST_CHILD     
 FROM #MANY_CHILD_FAMILY family
+
+--Для того, чтобы в Excel выводились дети в одной ячейке но в разных стркоах.
+UPDATE listChild
+SET listChild.LIST_CHILD = '= "' + REPLACE(listChild.LIST_CHILD, ';', '" & СИМВОЛ(10) & "') + '"'
+FROM #LIST_CHILD_IN_FAMILY listChild
 
 
 ------------------------------------------------------------------------------------------------------------------------------
