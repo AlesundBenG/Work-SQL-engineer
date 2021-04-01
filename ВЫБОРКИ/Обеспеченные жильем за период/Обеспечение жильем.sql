@@ -3,11 +3,11 @@
 
 --Начало периода отчета.
 DECLARE @startDateReport DATE
-SET @startDateReport = CONVERT(DATE, '01-01-2020')
+SET @startDateReport = CONVERT(DATE, '01-01-2021')
 
 --Конец периода отчета.
 DECLARE @endDateReport DATE
-SET @endDateReport = CONVERT(DATE, '31-12-2020')
+SET @endDateReport = CONVERT(DATE, '01-05-2021')
 
 
 --------------------------------------------------------------------------------------------------------------------------------
@@ -49,18 +49,19 @@ VALUES
     (2492, 3),
     (2489, 3),
     (2352, 3),
-    (40, 4),
-    (2348, 4),
-    (2493, 5),
-    (2494, 5),
-    (2490, 5),
-    (2491, 5),
-    (2421, 6),
-    (2044, 7),
-    (242, 8),
-    (243, 8),
-    (245, 8),
-    (2471, 9)
+    (2407, 4),
+    (40, 5),
+    (2348, 5),
+    (2493, 6),
+    (2494, 6),
+    (2490, 6),
+    (2491, 6),
+    (2421, 7),
+    (2044, 8),
+    (242, 9),
+    (243, 9),
+    (245, 9),
+    (2471, 10)
 
 
 ------------------------------------------------------------------------------------------------------------------------------
@@ -83,8 +84,8 @@ FROM WM_HOUSENEED houseNeed --Обеспеченность жильем.
 WHERE houseNeed.A_STATUS = 10                                                               --Статус в БД "Действует".
     AND CONVERT(DATE, houseNeed.A_ENDDATANEED) BETWEEN @startDateReport AND @endDateReport  --Дата снятия с учета на период отчета.
     AND houseNeed.A_REASON_EXCL = 6 AND houseNeed.A_STATUSNEEDS = 1                         --Причина снятия с учета "МСП в форме социальной выплаты жилье предоставлены".
-    
-    
+
+  
 ------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -100,6 +101,7 @@ FROM #PROVIDED_WITH_HOUSING providedHousing
                 WHEN typeCategory.A_ID IN (2400, 2185)              THEN 'Участники ВОВ'
                 WHEN typeCategory.A_ID IN (2177)                    THEN 'Жители блокадного Ленинграда и жители осажденного Севастополя'
                 WHEN typeCategory.A_ID IN (2492, 2489, 2352)        THEN 'Члены семей ветеранов ВОВ'
+                WHEN typeCategory.A_ID IN (2407)                    THEN 'Инвалиды боевых действий'
                 WHEN typeCategory.A_ID IN (40, 2348)                THEN 'Ветераны боевых действий'
                 WHEN typeCategory.A_ID IN (2493, 2494, 2490, 2491)  THEN 'Члены семей ВБД'
                 WHEN typeCategory.A_ID IN (2421)                    THEN 'Узники, имеющие инвалидность'
@@ -220,15 +222,6 @@ WHERE t.gnum = 1
 ------------------------------------------------------------------------------------------------------------------------------
 
 
-UPDATE providedHousing
-SET providedHousing.DISTRICT = 'Киров'
-FROM #PROVIDED_WITH_HOUSING providedHousing
-WHERE DISTRICT IS NULL
-
-
-------------------------------------------------------------------------------------------------------------------------------
-
-
 --Установка района.
 UPDATE providedHousing
 SET providedHousing.DISTRICT = t.DISTRICT,
@@ -273,10 +266,13 @@ FROM #PROVIDED_WITH_HOUSING providedHousing
 ------------------------------------------------------------------------------------------------------------------------------  
    
    
-SELECT * FROM #PROVIDED_WITH_HOUSING
+--Заплкатка пока.
+UPDATE providedHousing
+SET providedHousing.DISTRICT = 'Киров'
+FROM #PROVIDED_WITH_HOUSING providedHousing
 WHERE DISTRICT IS NULL
-  
-  
+
+
 ------------------------------------------------------------------------------------------------------------------------------
   
   
@@ -297,11 +293,13 @@ SELECT
                                                                                                 'Жители блокадного Ленинграда и жители осажденного Севастополя', 
                                                                                                 'Члены семей ветеранов ВОВ'                                     
     ))                                                                                                                                                          AS [Сумма предоставленной меры социальной поддержки],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Инвалиды боевых действий')                                         AS [Инвалиды боевых действий],
     (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Ветераны боевых действий')                                         AS [Ветераны боевых действий],
     (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Члены семей ВБД')                                                  AS [Члены семей ВБД],
     (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Узники, имеющие инвалидность')                                     AS [Узники, имеющие инвалидность],
     (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Узники, не имеющие инвалидность')                                  AS [Узники, не имеющие инвалидность],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY IN ('Ветераны боевых действий', 
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY IN ('Инвалиды боевых действий',
+                                                                                                'Ветераны боевых действий', 
                                                                                                 'Члены семей ВБД', 
                                                                                                 'Узники, имеющие инвалидность', 
                                                                                                 'Узники, не имеющие инвалидность'
@@ -321,4 +319,13 @@ FROM (SELECT DISTINCT DISTRICT FROM #PROVIDED_WITH_HOUSING) t
 ------------------------------------------------------------------------------------------------------------------------------
 
 
-SELECT * FROM #PROVIDED_WITH_HOUSING
+SELECT 
+    personalCard.A_TITLE            AS [ЛД],
+    personalCard.A_SNILS            AS [СНИЛС],
+    providedHousing.END_DATE_NEED   AS [Дата выплаты],
+    providedHousing.PRICE           AS [Выплата],
+    providedHousing.CATEGORY        AS [Категория],
+    providedHousing.DISTRICT        AS [Район]
+FROM #PROVIDED_WITH_HOUSING providedHousing
+    INNER JOIN WM_PERSONAL_CARD personalCard --Личное дело гражданина.
+        ON personalCard.OUID = providedHousing.PERSONOUID
