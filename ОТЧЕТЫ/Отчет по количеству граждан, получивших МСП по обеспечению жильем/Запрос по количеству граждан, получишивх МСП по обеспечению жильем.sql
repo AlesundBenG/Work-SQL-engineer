@@ -346,6 +346,6 @@ FROM #PROVIDED_WITH_HOUSING providedHousing
 ----Личное дело гражданина.    
     INNER JOIN WM_PERSONAL_CARD personalCard 
         ON personalCard.OUID = providedHousing.PERSONOUID
-ORDER BY providedHousing.DISTRICT 
+ORDER BY providedHousing.DISTRICT, personalCard.OUID
              
 ------------------------------------------------------------------------------------------------------------------------------
