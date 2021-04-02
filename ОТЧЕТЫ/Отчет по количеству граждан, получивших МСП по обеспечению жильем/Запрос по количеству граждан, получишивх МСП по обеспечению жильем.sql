@@ -1,19 +1,19 @@
 ------------------------------------------------------------------------------------------------------------------------------
 
+--Конец периода отчета.
+DECLARE @endDateReport DATE
+SET @endDateReport = CONVERT(DATE, #endDateReport#)
 
 --Начало периода отчета.
 DECLARE @startDateReport DATE
-SET @startDateReport = CONVERT(DATE, '01-01-2021')
-
---Конец периода отчета.
-DECLARE @endDateReport DATE
-SET @endDateReport = CONVERT(DATE, '01-05-2021')
+SET @startDateReport = CAST(CAST(YEAR(@endDateReport) AS VARCHAR) + '-01-01' AS DATE)
 
 
 --------------------------------------------------------------------------------------------------------------------------------
 
 
 --Удаление временных таблиц.
+IF OBJECT_ID('tempdb..#DISTRICT')               IS NOT NULL BEGIN DROP TABLE #DISTRICT              END --Районы.
 IF OBJECT_ID('tempdb..#CATEGORY_PRIORITY')      IS NOT NULL BEGIN DROP TABLE #CATEGORY_PRIORITY     END --Таблица приоритетов льготных категорий.
 IF OBJECT_ID('tempdb..#PROVIDED_WITH_HOUSING')  IS NOT NULL BEGIN DROP TABLE #PROVIDED_WITH_HOUSING END --Таблица людей, которые получили поддержку по обеспечению жильем.
 IF OBJECT_ID('tempdb..#RESULT')                 IS NOT NULL BEGIN DROP TABLE #RESULT                END --Результат.
@@ -23,6 +23,9 @@ IF OBJECT_ID('tempdb..#RESULT')                 IS NOT NULL BEGIN DROP TABLE #RE
 
 
 --Создание временных таблиц.
+CREATE TABLE #DISTRICT (
+    NAME    VARCHAR(256) --Район.
+)
 CREATE TABLE #CATEGORY_PRIORITY (
     CATEGORY    INT,    --Категория.
     PRIORITY    INT,    --Приоритет.
@@ -34,6 +37,24 @@ CREATE TABLE #PROVIDED_WITH_HOUSING (
     CATEGORY        VARCHAR(256),   --Льготная категория. 
     DISTRICT        VARCHAR(256)    --Район.
 )
+
+
+------------------------------------------------------------------------------------------------------------------------------
+
+--Выборка районов.
+INSERT INTO #DISTRICT (NAME)
+SELECT DISTINCT 
+    CASE
+        WHEN federationBorought.A_NAME IS NULL THEN 'Киров'
+        ELSE federationBorought.A_NAME
+    END AS ORG -- RAION
+FROM ESRN_OSZN_DEP osznDepartament --Органы социальной защиты.                                        
+----Базовый класс организаций.
+    INNER JOIN SPR_ORG_BASE organization   
+        ON organization.OUID = osznDepartament.OUID          
+----Справочник районов субъектов федерации.
+    LEFT JOIN SPR_FEDERATIONBOROUGHT federationBorought     
+        ON federationBorought.OUID = organization.A_FEDBOROUGH  
 
 
 ------------------------------------------------------------------------------------------------------------------------------
@@ -245,11 +266,11 @@ FROM #PROVIDED_WITH_HOUSING providedHousing
                         902  --Социальная выплата на приобретение жилого помещения.
                     )
         ----Период предоставления МСП.
-            INNER JOIN SPR_SERV_PERIOD period 
+            LEFT JOIN SPR_SERV_PERIOD period 
                 ON period.A_SERV = servServ.OUID 
                     AND period.A_STATUS = 10    --Статус в БД "Действует".
-                    AND CONVERT(DATE, period.STARTDATE) < @endDateReport
-                    AND (CONVERT(DATE, period.A_LASTDATE) > @startDateReport OR period.A_LASTDATE IS NULL)
+                    AND CONVERT(DATE, period.STARTDATE) < @endDateReport                          
+                    AND (DATEADD(MONTH, 3, CONVERT(DATE, period.A_LASTDATE)) > @startDateReport OR period.A_LASTDATE IS NULL) --Отодвигаем дату окончания на случай, если задержали выплату.
         ----ОСЗН.
             INNER JOIN ESRN_OSZN_DEP osznDepartament
                 ON osznDepartament.OUID = servServ.A_ORGNAME --Связка с назначением.
@@ -259,73 +280,72 @@ FROM #PROVIDED_WITH_HOUSING providedHousing
         ----Районы
             LEFT JOIN SPR_FEDERATIONBOROUGHT federationBorought
                 ON federationBorought.OUID = oszn_federationBorought.A_TOID
+        WHERE period.A_ID IS NOT NULL           --Период должен быть....
+            OR (period.A_ID IS NULL             --...или периода может не быть.
+                AND servServ.A_SK_MSP = 902     --У социальной выплаты на приобретение жилого помещения, так как выплата не выплачивается самому человеку.
+                AND CONVERT(DATE, servServ.A_SERVDATE) BETWEEN @startDateReport AND @endDateReport --Тогда дата принятия решения должна быть в периоде.
+            )
 ) t 
     ON t.PERSONOUID = providedHousing.PERSONOUID    
   
   
 ------------------------------------------------------------------------------------------------------------------------------  
    
-   
---Заплкатка пока.
-UPDATE providedHousing
-SET providedHousing.DISTRICT = 'Киров'
-FROM #PROVIDED_WITH_HOUSING providedHousing
-WHERE DISTRICT IS NULL
-
-
-------------------------------------------------------------------------------------------------------------------------------
+--Для вывода в отчет.
+SELECT CONVERT(VARCHAR, @endDateReport, 104) AS [Дата отчета]
   
-  
---Расчеты
+--Для вывода в отчет.
 SELECT 
-    t.DISTRICT,
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Инвалиды ВОВ')                                                     AS [Инвалиды ВОВ],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Участники ВОВ')                                                    AS [Участники ВОВ],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Жители блокадного Ленинграда и жители осажденного Севастополя')    AS [Жители блокадного Ленинграда и жители осажденного Севастополя],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Члены семей ветеранов ВОВ')                                        AS [Члены семей ветеранов ВОВ],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY IN ('Инвалиды ВОВ', 
+    district.NAME                                                                                                                                                   AS [Район],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME AND CATEGORY = 'Инвалиды ВОВ')                                                      AS [Инвалиды ВОВ],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME AND CATEGORY = 'Участники ВОВ')                                                     AS [Участники ВОВ],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME AND CATEGORY = 'Жители блокадного Ленинграда и жители осажденного Севастополя')     AS [Жители блокадного Ленинграда и жители осажденного Севастополя],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME AND CATEGORY = 'Члены семей ветеранов ВОВ')                                         AS [Члены семей ветеранов ВОВ],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME AND CATEGORY IN ('Инвалиды ВОВ', 
                                                                                                 'Участники ВОВ', 
                                                                                                 'Жители блокадного Ленинграда и жители осажденного Севастополя', 
                                                                                                 'Члены семей ветеранов ВОВ'
-    ))                                                                                                                                                          AS [Всего ВОВ],
-    (SELECT ISNULL(SUM(PRICE), 0) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY IN ('Инвалиды ВОВ', 
+    ))                                                                                                                                                              AS [Всего ВОВ],
+    (SELECT ISNULL(SUM(PRICE), 0) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME  AND CATEGORY IN ('Инвалиды ВОВ', 
                                                                                                 'Участники ВОВ', 
                                                                                                 'Жители блокадного Ленинграда и жители осажденного Севастополя', 
                                                                                                 'Члены семей ветеранов ВОВ'                                     
-    ))                                                                                                                                                          AS [Сумма ВОВ],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Инвалиды боевых действий')                                         AS [Инвалиды боевых действий],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Ветераны боевых действий')                                         AS [Ветераны боевых действий],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Члены семей ВБД')                                                  AS [Члены семей ВБД],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Узники, имеющие инвалидность')                                     AS [Узники, имеющие инвалидность],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Узники, не имеющие инвалидность')                                  AS [Узники, не имеющие инвалидность],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY IN ('Инвалиды боевых действий',
+    ))                                                                                                                                                              AS [Сумма ВОВ],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME  AND CATEGORY = 'Инвалиды боевых действий')                                         AS [Инвалиды боевых действий],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME  AND CATEGORY = 'Ветераны боевых действий')                                         AS [Ветераны боевых действий],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME  AND CATEGORY = 'Члены семей ВБД')                                                  AS [Члены семей ВБД],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME  AND CATEGORY = 'Узники, имеющие инвалидность')                                     AS [Узники, имеющие инвалидность],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME  AND CATEGORY = 'Узники, не имеющие инвалидность')                                  AS [Узники, не имеющие инвалидность],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME  AND CATEGORY IN ('Инвалиды боевых действий',
                                                                                                 'Ветераны боевых действий', 
                                                                                                 'Члены семей ВБД', 
                                                                                                 'Узники, имеющие инвалидность', 
                                                                                                 'Узники, не имеющие инвалидность'
-    ))                                                                                                                                                          AS [Всего ВБД],
-    (SELECT ISNULL(SUM(PRICE), 0) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY IN ('Ветераны боевых действий', 
+    ))                                                                                                                                                              AS [Всего ВБД],
+    (SELECT ISNULL(SUM(PRICE), 0) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME  AND CATEGORY IN ('Ветераны боевых действий', 
                                                                                                 'Члены семей ВБД', 
                                                                                                 'Узники, имеющие инвалидность', 
                                                                                                 'Узники, не имеющие инвалидность'
-    ))                                                                                                                                                          AS [Сумма ВБД],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Инвалиды')                                                         AS [Инвалиды],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY = 'Семьи, имеющие детей-инвалидов')                                   AS [Семьи, имеющие детей-инвалидов],
-    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY IN ('Инвалиды', 'Семьи, имеющие детей-инвалидов'))                    AS [Всего инвалиды],
-    (SELECT ISNULL(SUM(PRICE), 0) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = t.DISTRICT AND CATEGORY IN ('Инвалиды', 'Семьи, имеющие детей-инвалидов'))       AS [Сумма инвалиды]
-FROM (SELECT DISTINCT DISTRICT FROM #PROVIDED_WITH_HOUSING) t
+    ))                                                                                                                                                              AS [Сумма ВБД],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME  AND CATEGORY = 'Инвалиды')                                                         AS [Инвалиды],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME  AND CATEGORY = 'Семьи, имеющие детей-инвалидов')                                   AS [Семьи, имеющие детей-инвалидов],
+    (SELECT COUNT(*) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME  AND CATEGORY IN ('Инвалиды', 'Семьи, имеющие детей-инвалидов'))                    AS [Всего инвалиды],
+    (SELECT ISNULL(SUM(PRICE), 0) FROM #PROVIDED_WITH_HOUSING WHERE DISTRICT = district.NAME  AND CATEGORY IN ('Инвалиды', 'Семьи, имеющие детей-инвалидов'))       AS [Сумма инвалиды]
+FROM #DISTRICT district
+ORDER BY district.NAME
 
-
-------------------------------------------------------------------------------------------------------------------------------
-
-
+--Для вывода в отчет.
 SELECT 
-    personalCard.A_TITLE            AS [ЛД],
-    personalCard.A_SNILS            AS [СНИЛС],
-    providedHousing.END_DATE_NEED   AS [Дата выплаты],
-    providedHousing.PRICE           AS [Выплата],
-    providedHousing.CATEGORY        AS [Категория],
-    providedHousing.DISTRICT        AS [Район]
+    personalCard.A_TITLE                                    AS [ЛД],
+    personalCard.A_SNILS                                    AS [СНИЛС],
+    CONVERT(VARCHAR, providedHousing.END_DATE_NEED, 104)    AS [Дата обеспечения],
+    providedHousing.PRICE                                   AS [Размер выплаты],
+    providedHousing.CATEGORY                                AS [Категория],
+    providedHousing.DISTRICT                                AS [Район]
 FROM #PROVIDED_WITH_HOUSING providedHousing
-    INNER JOIN WM_PERSONAL_CARD personalCard --Личное дело гражданина.
+----Личное дело гражданина.    
+    INNER JOIN WM_PERSONAL_CARD personalCard 
         ON personalCard.OUID = providedHousing.PERSONOUID
+ORDER BY providedHousing.DISTRICT 
+             
+------------------------------------------------------------------------------------------------------------------------------
