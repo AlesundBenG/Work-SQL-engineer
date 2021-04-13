@@ -673,9 +673,9 @@ FROM #TRANSPORT_DOC_THAT_END transportDoc    --Справки льготного
         ON docInvalid.PERSONOUID = transportDoc.PERSONOUID --Связка со справкой льготного проезда.
 
 --Установка последнего дня месяца, если установленная дата не является последним днем месяца.
-UPDATE #RESULT
-SET NEW_DATE = DATEADD(MONTH, ((YEAR(NEW_DATE) - 1900) * 12) + MONTH(NEW_DATE), -1)
-FROM #RESULT    
+--UPDATE #RESULT
+--SET NEW_DATE = DATEADD(MONTH, ((YEAR(NEW_DATE) - 1900) * 12) + MONTH(NEW_DATE), -1)
+--FROM #RESULT    
 
 
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
