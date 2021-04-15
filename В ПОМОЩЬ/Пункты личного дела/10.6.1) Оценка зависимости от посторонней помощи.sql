@@ -20,8 +20,12 @@ SELECT
     supervision.A_TITLE                                         AS [Присмотр],
     hear.A_TITLE                                                AS [Слух],
     presenceDanger.A_TITLE                                      AS [Наличие опасности в районе проживания или доме],
-    support.A_TITLE                                             AS [Наличие внешних ресурсов]
+    support.A_TITLE                                             AS [Наличие внешних ресурсов],
+    esrnStatusAssessmentDependence.A_NAME                       AS [Статус оценки зависимости от посторонней помощи в базе данных]  
 FROM WM_ASSESSMENT_DEPENDENCE assessmentDependence
+----Статус в БД.
+    INNER JOIN ESRN_SERV_STATUS esrnStatusAssessmentDependence
+        ON esrnStatusAssessmentDependence.A_ID = assessmentDependence.A_STATUS
 ----Личное дело гражданина.
     INNER JOIN WM_PERSONAL_CARD personalCard 
         ON personalCard.OUID = assessmentDependence.PERSONOUID
