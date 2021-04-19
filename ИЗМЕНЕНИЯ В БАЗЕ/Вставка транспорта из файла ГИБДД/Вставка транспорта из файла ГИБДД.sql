@@ -100,24 +100,28 @@ SELECT * FROM #RESULT
 
 
 --Вставка сведений.
-INSERT INTO WM_TRANSPORTATION (GUID, A_PC, A_TYPE, A_CREATEDATE, A_CROWNER, A_TS, A_DOC, A_EDITOR, A_PART, A_PARTNUMPART, A_PARTDENOMPART, A_MARK, A_POWER_HORSE, A_YEAR, A_SOURCE, A_COMMENT)
+INSERT INTO WM_TRANSPORTATION (GUID, A_PC, A_TYPE, A_CREATEDATE, A_CROWNER, A_TS, A_DOC, A_EDITOR, A_PART, A_PARTNUMPART, A_PARTDENOMPART, A_MARK, A_POWER_HORSE, A_YEAR, A_SOURCE, A_COMMENT, DATE_RECEIPT_INFORMATION, START_OWN_DATE, END_OWN_DATE)
 SELECT   
-    NEWID()                 AS GUID,
-    FROM_DATABASE_OUID      AS A_PC,
-    FROM_FILE_TYPE_CAR      AS A_TYPE,
-    GETDATE()               AS A_CREATEDATE,
-    10314303                AS A_CROWNER, 
-    CAST(NULL AS DATE)      AS A_TS,
-    CAST(NULL AS INT)       AS A_DOC,
-    CAST(NULL AS INT)       AS A_EDITOR,
-    CAST(NULL AS FLOAT)     AS A_PART,
-    CAST(NULL AS INT)       AS A_PARTNUMPART,
-    CAST(NULL AS INT)       AS A_PARTDENOMPART,
-    CAST(NULL AS VARCHAR)   AS A_MARK,
-    FROM_FILE_POWER_CAR     AS A_POWER_HORSE,
-    FROM_FILE_YEAR_CAR      AS A_YEAR,
-    CAST(NULL AS INT)       AS A_SOURCE,
-    CAST(NULL AS TEXT)      AS A_COMMENT
+    NEWID()                                 AS GUID,
+    FROM_DATABASE_OUID                      AS A_PC,
+    FROM_FILE_TYPE_CAR                      AS A_TYPE,
+    GETDATE()                               AS A_CREATEDATE,
+    10314303                                AS A_CROWNER, 
+    CAST(NULL AS DATE)                      AS A_TS,
+    CAST(NULL AS INT)                       AS A_DOC,
+    CAST(NULL AS INT)                       AS A_EDITOR,
+    CAST(NULL AS FLOAT)                     AS A_PART,
+    CAST(NULL AS INT)                       AS A_PARTNUMPART,
+    CAST(NULL AS INT)                       AS A_PARTDENOMPART,
+    CAST(NULL AS VARCHAR)                   AS A_MARK,
+    FROM_FILE_POWER_CAR                     AS A_POWER_HORSE,
+    FROM_FILE_YEAR_CAR                      AS A_YEAR,
+    CAST(NULL AS INT)                       AS A_SOURCE,
+    'Данные из ГИБДД за ' + 
+        CONVERT(VARCHAR, GETDATE(), 104)    AS A_COMMENT,
+    GETDATE()                               AS DATE_RECEIPT_INFORMATION
+    CAST(NULL AS DATE)                      AS START_OWN_DATE,
+    CAST(NULL AS DATE)                      AS END_OWN_DATE
 FROM #RESULT
 
 
