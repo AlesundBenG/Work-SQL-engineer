@@ -17,19 +17,21 @@ CREATE TABLE #DATA_FROM_DATABASE (
     NAME            VARCHAR(256),   --Имя.
     SECONDNAME      VARCHAR(256),   --Отчество.
     BIRTHDATE       DATE,           --Дата рождения.
+    SNILS           VARCHAR(256)    --СНИЛС.
 )
 
 
 --------------------------------------------------------------------------------------------------------------------------------
 
 --Выборка данных для сравнения.
-INSERT INTO #DATA_FROM_DATABASE (OUID, SURNAME, NAME, SECONDNAME, BIRTHDATE)
+INSERT INTO #DATA_FROM_DATABASE (OUID, SURNAME, NAME, SECONDNAME, BIRTHDATE, SNILS)
 SELECT
     personalCard.OUID                                                               AS OUID,
     REPLACE(ISNULL(personalCard.A_SURNAME_STR, fioSurname.A_NAME), 'ё', 'е')        AS SURNAME,
     REPLACE(ISNULL(personalCard.A_NAME_STR, fioName.A_NAME), 'ё', 'е')              AS NAME,
     REPLACE(ISNULL(personalCard.A_SECONDNAME_STR, fioSecondname.A_NAME), 'ё', 'е')  AS SECONDNAME,
-    CONVERT(DATE, personalCard.BIRTHDATE)                                           AS BIRTHDATE
+    CONVERT(DATE, personalCard.BIRTHDATE)                                           AS BIRTHDATE,
+    personalCard.A_SNILS                                                            AS SNILS
 FROM WM_PERSONAL_CARD personalCard --Личное дело гражданина.  
 ----Фамилия.
     LEFT JOIN SPR_FIO_SURNAME fioSurname
@@ -42,17 +44,17 @@ FROM WM_PERSONAL_CARD personalCard --Личное дело гражданина.
         ON fioSecondname.OUID = personalCard.A_SECONDNAME     
 WHERE personalCard.A_STATUS = 10         
      
-            
+       
 --------------------------------------------------------------------------------------------------------------------------------
 
 
 --Выборка данных из файла.
 SELECT 
+    VARCHAR_1                                       AS SNILS,
     REPLACE(REPLACE(VARCHAR_2, ' ', ''), 'ё', 'е')  AS SURNAME,
     REPLACE(REPLACE(VARCHAR_3, ' ', ''), 'ё', 'е')  AS NAME,
     REPLACE(REPLACE(VARCHAR_4, ' ', ''), 'ё', 'е')  AS SECONDNAME,
     CONVERT(DATE, VARCHAR_5)                        AS BIRTHDATE,
-    VARCHAR_1,
     VARCHAR_6,
     VARCHAR_7,
     VARCHAR_8,
@@ -60,7 +62,7 @@ SELECT
     VARCHAR_10
 INTO #DATA_FROM_FILE
 FROM TEMPORARY_TABLE
-WHERE VARCHAR_10 = 'Информация из ГИБДД'
+WHERE VARCHAR_10 = 'Информация из ГИБДД 2'
 
 
 --------------------------------------------------------------------------------------------------------------------------------
@@ -69,6 +71,7 @@ WHERE VARCHAR_10 = 'Информация из ГИБДД'
 --Результат.
 SELECT DISTINCT
     ISNULL(CONVERT(VARCHAR, fromDatabase.OUID), '-')        AS FROM_DATABASE_OUID,
+    ISNULL(fromFile.SNILS, '')                              AS FROM_FILE_SNILS,
     ISNULL(fromFile.SURNAME, '')                            AS FROM_FILE_SURNAME,
     ISNULL(fromFile.NAME, '')                               AS FROM_FILE_NAME,
     ISNULL(fromFile.SECONDNAME, '')                         AS FROM_FILE_SECONDNAME,
@@ -83,16 +86,32 @@ FROM #DATA_FROM_FILE fromFile
             AND fromFile.NAME = fromDatabase.NAME COLLATE CYRILLIC_GENERAL_CI_AS                --Имя обязательно должно совпадать.
             AND fromFile.SECONDNAME = fromDatabase.SECONDNAME COLLATE CYRILLIC_GENERAL_CI_AS    --Отчество обязательно должно совпадать.
             AND fromFile.BIRTHDATE = fromDatabase.BIRTHDATE                                     --Дата рождения обязательно должна совпадать.
+            AND fromFile.SNILS = fromDatabase.SNILS
 
 
 --------------------------------------------------------------------------------------------------------------------------------
 
 
+--Демонстрация результата до корректировки.  
+SELECT * FROM #RESULT
+
 --Удаление не идентифицированных.
 DELETE FROM #RESULT
 WHERE FROM_DATABASE_OUID = '-'
 
---Демонстрация результата.
+--Удаляем данные, которые уже есть.
+DELETE FROM #RESULT
+WHERE EXISTS (
+    SELECT 
+       transport.A_OUID
+    FROM WM_TRANSPORTATION transport
+    WHERE transport.A_PC = #RESULT.FROM_DATABASE_OUID
+        AND transport.A_YEAR = #RESULT.FROM_FILE_YEAR_CAR
+        AND transport.A_TYPE = #RESULT.FROM_FILE_TYPE_CAR
+        AND transport.A_POWER_HORSE = #RESULT.FROM_FILE_POWER_CAR
+)
+
+--Демонстрация результата после корректировки.
 SELECT * FROM #RESULT
 
 
