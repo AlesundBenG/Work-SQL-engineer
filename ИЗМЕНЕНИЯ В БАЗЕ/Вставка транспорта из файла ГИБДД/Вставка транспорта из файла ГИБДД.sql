@@ -76,18 +76,22 @@ SELECT DISTINCT
     ISNULL(fromFile.NAME, '')                               AS FROM_FILE_NAME,
     ISNULL(fromFile.SECONDNAME, '')                         AS FROM_FILE_SECONDNAME,
     ISNULL(fromFile.BIRTHDATE, '')                          AS FROM_FILE_BIRTHDATE,
-    fromFile.VARCHAR_6                                      AS FROM_FILE_TYPE_CAR, 
+    typeTransport.A_OUID                                    AS FROM_FILE_TYPE_CAR, 
     fromFile.VARCHAR_7                                      AS FROM_FILE_YEAR_CAR,
     fromFile.VARCHAR_8                                      AS FROM_FILE_POWER_CAR
 INTO #RESULT
 FROM #DATA_FROM_FILE fromFile
+----Данные из базы данных.
     LEFT JOIN #DATA_FROM_DATABASE fromDatabase
         ON fromFile.SURNAME = fromDatabase.SURNAME COLLATE CYRILLIC_GENERAL_CI_AS               --Фамилия обязательно должна совпадать.
             AND fromFile.NAME = fromDatabase.NAME COLLATE CYRILLIC_GENERAL_CI_AS                --Имя обязательно должно совпадать.
             AND fromFile.SECONDNAME = fromDatabase.SECONDNAME COLLATE CYRILLIC_GENERAL_CI_AS    --Отчество обязательно должно совпадать.
             AND fromFile.BIRTHDATE = fromDatabase.BIRTHDATE                                     --Дата рождения обязательно должна совпадать.
             AND fromFile.SNILS = fromDatabase.SNILS
-
+----В файле хранится код, а не идентификатор типа транспорта из справочника.
+    INNER JOIN SPR_TRANSPORTATION_TYPE typeTransport
+        ON typeTransport.A_CODE = fromFile.VARCHAR_6 
+    
 
 --------------------------------------------------------------------------------------------------------------------------------
 
@@ -142,6 +146,5 @@ SELECT
     CAST(NULL AS DATE)                      AS START_OWN_DATE,
     CAST(NULL AS DATE)                      AS END_OWN_DATE
 FROM #RESULT
-
 
 --------------------------------------------------------------------------------------------------------------------------------

@@ -306,12 +306,13 @@ FROM #PETITION_FROM_EPGU fromEPGU
 ----Приложенные сведения о человеке.
     INNER JOIN DI_EGPU_RELATIVE_PERSON relative
         ON relative.A_APPEAL = petition.A_OUID
+            AND relative.A_STATUS = 10
 ----Сведения о родственнике.
     INNER JOIN DI_EPGU_PERSON joinedPerson
         ON joinedPerson.A_OUID = relative.A_PERSON
             AND joinedPerson.A_OUID <> petition.A_PERSON
+            AND joinedPerson.A_STATUS = 10
 ----Организация.
     LEFT JOIN SPR_ORG_BASE organization
-        ON organization.OUID = petition.A_ORG
-        
+        ON organization.OUID = petition.A_ORG 
 ORDER BY [Источник], [Дата регистрации], [Идентификатор], [Тип ЛД], [Фамилия]
