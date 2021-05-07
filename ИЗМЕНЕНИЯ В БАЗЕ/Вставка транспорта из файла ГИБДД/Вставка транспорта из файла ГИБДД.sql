@@ -79,12 +79,12 @@ VALUES
 --Выборка данных для сравнения.
 INSERT INTO #DATA_FROM_DATABASE (OUID, SURNAME, NAME, SECONDNAME, BIRTHDATE, SNILS)
 SELECT
-    personalCard.OUID                                                               AS OUID,
-    REPLACE(ISNULL(personalCard.A_SURNAME_STR, fioSurname.A_NAME), 'ё', 'е')        AS SURNAME,
-    REPLACE(ISNULL(personalCard.A_NAME_STR, fioName.A_NAME), 'ё', 'е')              AS NAME,
-    REPLACE(ISNULL(personalCard.A_SECONDNAME_STR, fioSecondname.A_NAME), 'ё', 'е')  AS SECONDNAME,
-    CONVERT(DATE, personalCard.BIRTHDATE)                                           AS BIRTHDATE,
-    personalCard.A_SNILS                                                            AS SNILS
+    personalCard.OUID                                                                                   AS OUID,
+    REPLACE(REPLACE(ISNULL(personalCard.A_SURNAME_STR, fioSurname.A_NAME), 'ё', 'е'), ' ', '')          AS SURNAME,
+    REPLACE(REPLACE(ISNULL(personalCard.A_NAME_STR, fioName.A_NAME), 'ё', 'е'), ' ', '')                AS NAME,
+    REPLACE(REPLACE(ISNULL(personalCard.A_SECONDNAME_STR, fioSecondname.A_NAME), 'ё', 'е'), ' ', '')    AS SECONDNAME,
+    CONVERT(DATE, personalCard.BIRTHDATE)                                                               AS BIRTHDATE,
+    personalCard.A_SNILS                                                                                AS SNILS
 FROM WM_PERSONAL_CARD personalCard --Личное дело гражданина.  
 ----Фамилия.
     LEFT JOIN SPR_FIO_SURNAME fioSurname
@@ -115,7 +115,7 @@ SELECT
     VARCHAR_10
 INTO #DATA_FROM_FILE
 FROM TEMPORARY_TABLE
-WHERE VARCHAR_10 = 'Информация из ГИБДД 3'
+WHERE VARCHAR_10 = 'Информация из ГИБДД 5'
 
 
 --------------------------------------------------------------------------------------------------------------------------------
@@ -150,8 +150,9 @@ FROM #DATA_FROM_FILE fromFile
 --------------------------------------------------------------------------------------------------------------------------------
 
 
---Демонстрация результата до корректировки.  
+--Демонстрация не идентифицированных
 SELECT * FROM #RESULT
+WHERE FROM_DATABASE_OUID = '-'
 
 --Удаление не идентифицированных.
 DELETE FROM #RESULT
@@ -169,13 +170,13 @@ WHERE EXISTS (
         AND transport.A_POWER_HORSE = #RESULT.FROM_FILE_POWER_CAR
 )
 
---Демонстрация результата после корректировки.
+--Демонстрация данных для вставки.
 SELECT * FROM #RESULT
 
 
 --------------------------------------------------------------------------------------------------------------------------------
 
-
+/*
 --Вставка сведений.
 INSERT INTO WM_TRANSPORTATION (GUID, A_PC, A_TYPE, A_CREATEDATE, A_CROWNER, A_TS, A_DOC, A_EDITOR, A_PART, A_PARTNUMPART, A_PARTDENOMPART, A_MARK, A_POWER_HORSE, A_YEAR, A_SOURCE, A_COMMENT, DATE_RECEIPT_INFORMATION, START_OWN_DATE, END_OWN_DATE, A_CATEGORY)
 SELECT   
@@ -203,6 +204,6 @@ SELECT
 FROM #RESULT result
     LEFT JOIN #CODE_CATEGORY category
         ON category.CODE = result.FROM_FILE_TYPE_CAR_CODE
-
+*/
 
 --------------------------------------------------------------------------------------------------------------------------------

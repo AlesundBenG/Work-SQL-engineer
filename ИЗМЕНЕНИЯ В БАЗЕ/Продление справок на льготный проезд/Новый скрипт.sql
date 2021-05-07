@@ -749,13 +749,13 @@ COMMIT
 
 ----------------------------------------------------------------------------------------------------------------------------
 
-/*
+
 SELECT * FROM #INVALID_WHO_NOT_HAVE_DOC_ABOUT_INVALID        
 SELECT * FROM #INFORMATION_ABOUT_INVALID
 SELECT * FROM #CREATED_DOC_ABOUT_INVALID
 SELECT * FROM #CREATED_HEALTH_PICTURE
 SELECT * FROM #RESULT
-*/
+
 
 ----------------------------------------------------------------------------------------------------------------------------
 
