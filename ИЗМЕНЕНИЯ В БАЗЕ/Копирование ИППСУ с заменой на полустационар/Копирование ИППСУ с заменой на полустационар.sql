@@ -163,7 +163,7 @@ SELECT
     individProgram.A_CONCLUSION     AS A_CONCLUSION,
     27                              AS A_STATUSPRIVELEGE,
     individProgram.A_PET_REG_DATE   AS A_PET_REG_DATE,
-    individProgram.A_PRE            AS A_PRE,
+    individProgram.A_DOC            AS A_PRE,
     
     individProgram.A_RATING_SOC_LIFE    AS A_RATING_SOC_LIFE,
     individProgram.A_RATING_SOC_MED     AS A_RATING_SOC_MED,
