@@ -1,0 +1,148 @@
+SELECT SUM(amount)
+ FROM (
+  SELECT {params.spherePcId} as pcId, 
+   --SUM(amount*partNumerator/partDenominator)/COUNT(DISTINCT monthNum) as amount
+   sum(amount)/COUNT(DISTINCT monthNum) as amount
+  FROM (
+   SELECT 
+    CASE 
+     WHEN calcTypeCode = 'point' THEN CASE WHEN recPcId = {params.personalCardId} AND recPcId = {params.spherePcId}  THEN 1 ELSE 0 END
+     ELSE 1
+    END as partNumerator,
+    CASE 
+     WHEN calcTypeCode = 'point' THEN 1 
+     WHEN calcTypeCode IN('area','livearea') THEN ISNULL(regCnt,{ALG.doc_regFlatPersonList_cnt})
+     ELSE ISNULL(regCnt,{ALG.doc_regFlatPersonList_cnt}) 
+    END as partDenominator,
+    payAmount, calcAmount,regTypeCode,
+    --CASE WHEN DATEDIFF(MONTH,recDate,{params.startDate}) = 0 THEN payAmount ELSE calcAmount END as amount,
+----------------------------------------------------------------------------------------------
+    CASE 
+        --Старый расчет по долям.
+        WHEN CONVERT(DATE, recDate) < CONVERT(DATE, '20200801') THEN
+            CASE 
+                WHEN recAmType IN (68,69,70) then round(payAmount*{PPRCONST.warCompPercent}/100,2) 
+                WHEN recAmType IN (11,20,39,42,45,81,25, 388, 391, 392) then round((payAmount/cast(ISNULL(regCnt,registered) as float))*cast(ISNULL(lgotCnt,{ALG.doc_regFlatPersonListLgot_cnt}) as float) *{PPRCONST.warCompPercent}/100.00,2)
+                WHEN recAmType IN (162) and y.SvedOLd = 'naim' then round((payAmount/cast(ISNULL(regCnt,registered) as float))*cast(ISNULL(lgotCnt,{ALG.doc_regFlatPersonListLgot_cnt}) as float) *{PPRCONST.warCompPercent}/100.00,2)
+                WHEN recAmType IN (162,38) and y.SvedOLd = 'sobst' then round((payAmount*cast(y.shareSobst as float))*{PPRCONST.warCompPercent}/100,2) 
+            END
+        --Новый расчет по количеству. 
+        ELSE 
+            CASE 
+                WHEN recAmType IN (68,69,70) then round(payAmount*{PPRCONST.warCompPercent}/100,2) 
+	            WHEN recAmType IN (11,20,39,42,45,81,25, 388, 391, 392, 162, 38) then round((payAmount/cast(ISNULL(regCnt,registered) as float))*cast(ISNULL(lgotCnt,{ALG.doc_regFlatPersonListLgot_cnt}) as float) *{PPRCONST.warCompPercent}/100.00,2)
+            END 
+    END amount,
+----------------------------------------------------------------------------------------------
+    recPcId, recDate, recAmType, DATEDIFF(MONTH,recDate,{params.startDate}) as monthNum, 
+-- CASE WHEN DATEDIFF(MONTH,recDate,recCreateDate) <= 6 and DATEDIFF(MONTH,recDate,recCreateDate) >0 AND recNum = 1 THEN 1 ELSE 0 END  advance,
+    MAX(CASE WHEN DATEDIFF(MONTH,recDate,recCreateDate) <= 48 AND recNum = 1 THEN 1 ELSE 0 END) OVER(PARTITION BY recPcId, recType) advance,
+    MAX(recDate) OVER(PARTITION BY recPcId, recType) as recAmMaxDate
+   FROM (
+    SELECT rec.A_OUID as recId, rec.A_RECEIPT_TYPE as recType, recType.A_CODE regTypeCode, rec.A_PAYER as recPcId, rec.A_PAYMENT_DATE as recDate, rec.A_CREATEDATE as recCreateDate, rec.A_NUM_LIVING as regCnt, 
+     recAm.A_OUID as recAmId, recAm.A_NAME_AMOUNT as recAmType, recAm.A_PAY as payAmount, recAm.A_PAY as calcAmount,
+     recAmTypeLink.A_HCV_AREA_OF_DISTRIB as hcsSphere, recAmCalcType.A_CODE as calcTypeCode,
+     ROW_NUMBER() OVER(PARTITION BY rec.A_OUID, recAm.A_OUID ORDER BY recTypeLink.A_OUID) as num,
+     wa.A_AMOUNT_PERSON registered, rec.A_NUM_LGOTA lgotCnt,
+     DENSE_RANK() OVER(PARTITION BY rec.A_PAYER, rec.A_RECEIPT_TYPE ORDER BY YEAR(rec.A_PAYMENT_DATE) DESC, MONTH(rec.A_PAYMENT_DATE) DESC) as recNum,
+     DENSE_RANK() OVER(PARTITION BY rec.A_PAYER, recAm.A_NAME_AMOUNT ORDER BY YEAR(rec.A_PAYMENT_DATE) DESC, MONTH(rec.A_PAYMENT_DATE) DESC) as recAmNum
+    FROM WM_RECEIPT rec
+    INNER JOIN SPR_RECEIPT_TYPE recType ON recType.A_OUID = rec.A_RECEIPT_TYPE
+    INNER JOIN SPR_LINK_MSP_RTYPE recTypeLink ON recTypeLink.TOID = recType.A_OUID
+     AND recTypeLink.FROMID = {params.mspLkNpdId}
+    INNER JOIN WM_RECEIPT_AMOUNT recAm ON recAm.A_RECEIPT = rec.A_OUID
+     AND (recAm.A_STATUS = {ACTIVESTATUS} OR recAm.A_STATUS IS NULL)
+    INNER JOIN SPR_LINK_NPD_MSP_CAT_HCS recAmTypeLink 
+     LEFT JOIN SPR_CALC_HCSTYPE recAmCalcType ON recAmTypeLink.A_CALC_TYPE = recAmCalcType.A_OUID
+    ON recAmTypeLink.TOID = recAm.A_NAME_AMOUNT AND recAmTypeLink.FROMID = {params.mspLkNpdId}
+    LEFT JOIN LINK_ACTDOC_PC docLink 
+         INNER JOIN WM_PERSONAL_CARD docPc ON docLink.A_TOID = docPc.OUID
+                 AND (docPc.A_STATUS = {ACTIVESTATUS} OR docPc.A_STATUS IS NULL)
+    ON docLink.A_FROMID = {ALG.doc_regFlatPersonList}
+    left join WM_ACTDOCUMENTS wa on wa.OUID = {ALG.doc_regFlatPersonList} and wa.A_STATUS = {ACTIVESTATUS}
+    WHERE rec.A_ADDR_ID = {ALG.doc_regFlatPersonList_addr} AND rec.A_FACT = 1
+     AND rec.A_PAYER = ISNULL(docPc.OUID,{params.personalCardId})
+     AND (rec.A_STATUS = {ACTIVESTATUS} OR rec.A_STATUS IS NULL)
+     and recAm.A_NAME_AMOUNT in (70,68,69,11,20,39,42,45,81,25,38,162, 388, 391, 392)
+   ) rec 
+    left join 
+  (select	
+		isnull(sum(
+				case
+					when ISNULL(Sobstv.A_PARTDENOMPART,0)<>0 
+						then cast(Sobstv.A_PARTNUMPART AS float)/cast(Sobstv.A_PARTDENOMPART AS float)	
+					else Sobstv.A_PART
+				end),1)shareSobst,
+		
+				case 
+					when exists (
+					select 1				
+					from	SPR_LINK_APPEAL_DOC linkDoc 			
+							join WM_ACTDOCUMENTS docNaim 
+							on docNaim.OUID = linkDoc.TOID and docNaim.DOCUMENTSTYPE in (2130,2131,2132)
+					where FROMID = {params.petitionId}
+					) 
+						then 'naim'
+					else 'sobst'
+				end SvedOLd 
+		from	WM_PETITION pet
+				join SPR_LINK_APPEAL_DOC linkDoc 
+					join WM_ACTDOCUMENTS doc on doc.OUID = linkDoc.TOID 
+				on pet.OUID = linkDoc.FROMID
+				left join(
+				select  docSobst.OUID,
+				wo.A_START_OWN_DATE,
+				wo.A_END_OWN_DATE,
+				linkDoc1.FROMID,
+				wo.A_PARTDENOMPART,
+				wo.A_PARTNUMPART,
+				wo.A_PART,
+				wo.A_OWNER_ID
+				from	SPR_LINK_APPEAL_DOC linkDoc1 			
+						join WM_ACTDOCUMENTS docSobst 
+							left join WM_OWNING wo on docSobst.A_ESTATE = wo.A_OUID  
+						on docSobst.OUID = linkDoc1.TOID and docSobst.DOCUMENTSTYPE in (3800,4196,4017)
+				where docSobst.A_STATUS=10				
+				)Sobstv on pet.OUID = Sobstv.FROMID and Sobstv.A_OWNER_ID = doc.PERSONOUID
+		where	pet.OUID =  {params.petitionId}
+				and doc.A_STATUS = {ACTIVESTATUS}
+				and (doc.DOCUMENTSTYPE in {DOC.Military_st24_p4}
+				or doc.DOCUMENTSTYPE in {DOC.Military_78FZ_st2}
+				or doc.DOCUMENTSTYPE in {DOC.Military_fz247_st10}
+				or doc.DOCUMENTSTYPE in {DOC.Military_fz283})
+				and (Sobstv.A_START_OWN_DATE is null or datediff(day,Sobstv.A_START_OWN_DATE,{params.startDate})>=0)
+				and (Sobstv.A_END_OWN_DATE is null or datediff(day,Sobstv.A_END_OWN_DATE,{params.startDate})<=0)
+)y on 1 = 1
+   WHERE rec.num = 1
+  ) x 
+     LEFT JOIN (
+	SELECT  MAX(serv.OUID) servId,
+		serv.A_PERSONOUID pcId
+	FROM ESRN_SERV_SERV serv
+        INNER JOIN LINK_ACTDOC_PC docLink ON docLink.A_FROMID = {ALG.doc_regFlatPersonList}
+        INNER JOIN WM_PERSONAL_CARD docPc ON docLink.A_TOID = docPc.OUID
+        AND (docPc.A_STATUS = {ACTIVESTATUS} OR docPc.A_STATUS IS NULL)
+        AND serv.A_PERSONOUID = docPc.OUID
+        INNER JOIN SPR_NPD_MSP_CAT mcn ON mcn.A_ID = serv.A_SERV
+        INNER JOIN (
+		SELECT A_CATEGORY FROM SPR_NPD_MSP_CAT WHERE A_ID = {params.npdMSPCatId}
+        ) curMCN ON ISNULL(mcn.A_CATEGORY,0) != ISNULL(curMCN.A_CATEGORY,0) 
+        INNER JOIN PPR_SERV msp ON msp.A_ID = mcn.A_MSP
+        AND msp.A_COD IN ('СompensationHousing','compCostsUtilities38FZ','compCostsPaymentHousingReg','compCostsUtilities5FZ','compCostsUtilities181FZ','compCostsUtilities1244FZ','compCostsUtilities175FZ','compCostsUtilities2FZ','compCostsUtilitiesReg','compCostsPaymentHousing')
+        INNER JOIN SPR_SERV_PERIOD period ON period.A_SERV=serv.OUID
+        AND (period.A_STATUS = {ACTIVESTATUS} OR period.A_STATUS IS NULL)
+        AND (period.STARTDATE IS NULL OR {SQL.equalBeforeInMonth(period.STARTDATE, params.startDate)})
+        AND (period.A_LASTDATE IS NULL OR {SQL.equalBeforeInMonth(params.startDate, period.A_LASTDATE)})
+        WHERE (serv.A_STATUS = {ACTIVESTATUS} OR serv.A_STATUS IS NULL)
+        GROUP BY serv.A_PERSONOUID
+  ) servs ON servs.pcId = x.recPcId
+  WHERE /*(servs.servId IS NULL OR x.regTypeCode IS NULL OR x.regTypeCode NOT IN ('hcs', 'hcs_gas', 'hcs_electro')) 
+   AND*/ (DATEDIFF(MONTH,recDate,{params.startDate}) = 0 
+      OR (advance = 1 AND DATEDIFF(MONTH,recAmMaxDate,{params.startDate}) BETWEEN 1 AND 24 AND DATEDIFF(MONTH,recDate,recAmMaxDate) = 0))
+  GROUP BY recPcId, recAmType
+ ) x
+ LEFT JOIN SPR_LINK_MSP_PERSON sphereLink ON sphereLink.TOID = x.pcId AND sphereLink.FROMID = {params.servServId}
+WHERE ({params.servServId} IS NULL 
+OR ((sphereLink.A_START_DATE IS NULL OR DATEDIFF(DAY,sphereLink.A_START_DATE,{params.startDate}) >= 0)
+AND (sphereLink.A_END_DATE IS NULL OR DATEDIFF(DAY,sphereLink.A_END_DATE,{params.startDate}) <= 0)))
+ GROUP BY pcId
