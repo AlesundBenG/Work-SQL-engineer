@@ -64,6 +64,7 @@ from(
      AND rec.A_PAYER = ISNULL(docPc.OUID,{params.personalCardId})
      AND (rec.A_STATUS = {ACTIVESTATUS} OR rec.A_STATUS IS NULL)
      and recAm.A_NAME_AMOUNT in (70,68,69,11,20,39,42,45,81,25,38,162, 388, 391, 392)
+     AND (recAm.A_NAME_AMOUNT = 69 AND rec.A_PAYER = {params.personalCardId} OR recAm.A_NAME_AMOUNT <> 69) --За телефон только у плательщика.
    ) rec 
     left join 
   (select	
