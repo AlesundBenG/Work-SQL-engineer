@@ -35,34 +35,44 @@ SELECT SUM(amount)
     recPcId, recDate, recAmType, DATEDIFF(MONTH,recDate,{params.startDate}) AS monthNum, 
     MAX(CASE WHEN DATEDIFF(MONTH,recDate,recCreateDate) <= 48 AND recNum = 1 THEN 1 ELSE 0 END) OVER(PARTITION BY recPcId, recType) advance,
     MAX(recDate) OVER(PARTITION BY recPcId, recType) AS recAmMaxDate
-   FROM (
-    SELECT 
-        rec.A_RECEIPT_TYPE AS recType,      rec.A_PAYER AS recPcId,     rec.A_PAYMENT_DATE AS recDate, 
-        rec.A_CREATEDATE AS recCreateDate,  rec.A_NUM_LIVING AS regCnt, rec.A_NUM_LGOTA AS lgotCnt,
-        recAm.A_NAME_AMOUNT AS recAmType,   recAm.A_PAY AS payAmount,   recAmCalcType.A_CODE AS calcTypeCode,
-        wa.A_AMOUNT_PERSON AS registered, 
-        ROW_NUMBER() OVER(PARTITION BY rec.A_OUID, recAm.A_OUID ORDER BY recTypeLink.A_OUID) AS num,
-        DENSE_RANK() OVER(PARTITION BY rec.A_PAYER, rec.A_RECEIPT_TYPE ORDER BY YEAR(rec.A_PAYMENT_DATE) DESC, MONTH(rec.A_PAYMENT_DATE) DESC) AS recNum,
-        DENSE_RANK() OVER(PARTITION BY rec.A_PAYER, recAm.A_NAME_AMOUNT ORDER BY YEAR(rec.A_PAYMENT_DATE) DESC, MONTH(rec.A_PAYMENT_DATE) DESC) AS recAmNum
-    FROM WM_RECEIPT rec
-    INNER JOIN SPR_RECEIPT_TYPE recType ON recType.A_OUID = rec.A_RECEIPT_TYPE
-    INNER JOIN SPR_LINK_MSP_RTYPE recTypeLink ON recTypeLink.TOID = recType.A_OUID
-     AND recTypeLink.FROMID = {params.mspLkNpdId}
-    INNER JOIN WM_RECEIPT_AMOUNT recAm ON recAm.A_RECEIPT = rec.A_OUID
-     AND (recAm.A_STATUS = {ACTIVESTATUS} OR recAm.A_STATUS IS NULL)
-    INNER JOIN SPR_LINK_NPD_MSP_CAT_HCS recAmTypeLink 
-     LEFT JOIN SPR_CALC_HCSTYPE recAmCalcType ON recAmTypeLink.A_CALC_TYPE = recAmCalcType.A_OUID
-    ON recAmTypeLink.TOID = recAm.A_NAME_AMOUNT AND recAmTypeLink.FROMID = {params.mspLkNpdId}
-    LEFT JOIN LINK_ACTDOC_PC docLink 
-         INNER JOIN WM_PERSONAL_CARD docPc ON docLink.A_TOID = docPc.OUID
-                 AND (docPc.A_STATUS = {ACTIVESTATUS} OR docPc.A_STATUS IS NULL)
-    ON docLink.A_FROMID = {ALG.doc_regFlatPersonList}
-    left join WM_ACTDOCUMENTS wa on wa.OUID = {ALG.doc_regFlatPersonList} and wa.A_STATUS = {ACTIVESTATUS}
-    WHERE rec.A_ADDR_ID = {ALG.doc_regFlatPersonList_addr} AND rec.A_FACT = 1
-     AND rec.A_PAYER = ISNULL(docPc.OUID,{params.personalCardId})
-     AND (rec.A_STATUS = {ACTIVESTATUS} OR rec.A_STATUS IS NULL)
-     and recAm.A_NAME_AMOUNT in (70,68,69,11,20,39,42,45,81,25,38,162, 388, 391, 392)
-   ) rec 
+    FROM (
+            SELECT 
+                rec.A_RECEIPT_TYPE AS recType,      rec.A_PAYER AS recPcId,     rec.A_PAYMENT_DATE AS recDate, 
+                rec.A_CREATEDATE AS recCreateDate,  rec.A_NUM_LIVING AS regCnt, rec.A_NUM_LGOTA AS lgotCnt,
+                recAm.A_NAME_AMOUNT AS recAmType,   recAm.A_PAY AS payAmount,   recAmCalcType.A_CODE AS calcTypeCode,
+                wa.A_AMOUNT_PERSON AS registered, 
+                ROW_NUMBER() OVER(PARTITION BY rec.A_OUID, recAm.A_OUID ORDER BY recTypeLink.A_OUID) AS num,
+                DENSE_RANK() OVER(PARTITION BY rec.A_PAYER, rec.A_RECEIPT_TYPE ORDER BY YEAR(rec.A_PAYMENT_DATE) DESC, MONTH(rec.A_PAYMENT_DATE) DESC) AS recNum,
+                DENSE_RANK() OVER(PARTITION BY rec.A_PAYER, recAm.A_NAME_AMOUNT ORDER BY YEAR(rec.A_PAYMENT_DATE) DESC, MONTH(rec.A_PAYMENT_DATE) DESC) AS recAmNum
+            FROM WM_RECEIPT rec --Квитанция.
+            ----Тип платежного документа.
+                INNER JOIN SPR_RECEIPT_TYPE recType ON recType.A_OUID = rec.A_RECEIPT_TYPE
+            ----Связка МСП-ЛК-НПД - тип квитанции.
+                INNER JOIN SPR_LINK_MSP_RTYPE recTypeLink ON recTypeLink.TOID = recType.A_OUID
+                    AND recTypeLink.FROMID = {params.mspLkNpdId}
+            ----Детализация платежного документа. 
+                INNER JOIN WM_RECEIPT_AMOUNT recAm ON recAm.A_RECEIPT = rec.A_OUID
+                    AND ISNULL(recAm.A_STATUS, {ACTIVESTATUS}) = {ACTIVESTATUS}
+            ----Класс связки МСП-ЛК-НПД - Вид ЖКУ.
+                INNER JOIN SPR_LINK_NPD_MSP_CAT_HCS recAmTypeLink ON recAmTypeLink.TOID = recAm.A_NAME_AMOUNT
+                    AND recAmTypeLink.FROMID = {params.mspLkNpdId}
+            ----Справочник видов расчета льгот.
+                LEFT JOIN SPR_CALC_HCSTYPE recAmCalcType ON recAmCalcType.A_OUID = recAmTypeLink.A_CALC_TYPE
+            ----Класс связки перечьня лиц документа и ЛД.
+                LEFT JOIN LINK_ACTDOC_PC docLink ON docLink.A_FROMID = {ALG.doc_regFlatPersonList}  
+            ----Личное дело гражданина.
+                INNER JOIN WM_PERSONAL_CARD docPc ON docLink.A_TOID = docPc.OUID
+                    AND ISNULL(docPc.A_STATUS, {ACTIVESTATUS}) = {ACTIVESTATUS}
+            ----Действующие документы.
+                LEFT JOIN WM_ACTDOCUMENTS wa ON wa.OUID = {ALG.doc_regFlatPersonList} 
+                    AND ISNULL(wa.A_STATUS, {ACTIVESTATUS}) = {ACTIVESTATUS}
+            WHERE rec.A_ADDR_ID = {ALG.doc_regFlatPersonList_addr}
+                AND rec.A_FACT = 1
+                AND rec.A_PAYER = ISNULL(docPc.OUID, {params.personalCardId}) 
+                AND ISNULL(rec.A_STATUS, {ACTIVESTATUS})= {ACTIVESTATUS}
+                AND recAm.A_NAME_AMOUNT in (70,68,69,11,20,39,42,45,81,25,38,162, 388, 391, 392)
+                AND (recAm.A_NAME_AMOUNT = 69 AND rec.A_PAYER = {params.personalCardId} OR recAm.A_NAME_AMOUNT <> 69) --За телефон только у плательщика.
+    ) rec 
     left join 
   (select	
 		isnull(sum(
