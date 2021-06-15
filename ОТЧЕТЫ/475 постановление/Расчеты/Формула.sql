@@ -28,7 +28,7 @@ SELECT SUM(amount)
         ELSE 
             CASE 
                 WHEN recAmType IN (68,69,70) then round(payAmount*{PPRCONST.warCompPercent}/100,2) 
-	            WHEN recAmType IN (11,20,39,42,45,81,25, 388, 391, 392, 162, 38) then round((payAmount/cast(ISNULL(regCnt,registered) AS float))*cast(ISNULL(lgotCnt,{ALG.doc_regFlatPersonListLgot_cnt}) AS float) *{PPRCONST.warCompPercent}/100.00,2)
+                WHEN recAmType IN (11,20,39,42,45,81,25, 388, 391, 392, 162, 38) then round((payAmount/cast(ISNULL(regCnt,registered) AS float))*cast(ISNULL(lgotCnt,{ALG.doc_regFlatPersonListLgot_cnt}) AS float) *{PPRCONST.warCompPercent}/100.00,2)
             END 
     END amount,
 ----------------------------------------------------------------------------------------------
@@ -74,66 +74,66 @@ SELECT SUM(amount)
                 AND ISNULL(rec.A_STATUS, {ACTIVESTATUS})= {ACTIVESTATUS} --Статус квитанции в БД "Действует".
     ) rec 
     LEFT JOIN (
-            SELECT	
+            SELECT    
                 --Доли.
-		        ISNULL(SUM(CASE
+                ISNULL(SUM(CASE
                     WHEN ISNULL(Sobstv.A_PARTDENOMPART, 0) <> 0 
-                        THEN CAST(Sobstv.A_PARTNUMPART AS FLOAT) / CAST(Sobstv.A_PARTDENOMPART AS FLOAT)	
+                        THEN CAST(Sobstv.A_PARTNUMPART AS FLOAT) / CAST(Sobstv.A_PARTDENOMPART AS FLOAT)    
                         ELSE Sobstv.A_PART
-				    END), 1
+                    END), 1
                 ) AS shareSobst,
                 --Найм или собственность.
                 CASE 
                     WHEN EXISTS (
-					    SELECT 1				
-					    FROM SPR_LINK_APPEAL_DOC linkDoc 			
+                        SELECT 1                
+                        FROM SPR_LINK_APPEAL_DOC linkDoc             
                             INNER JOIN  WM_ACTDOCUMENTS docNaim ON docNaim.OUID = linkDoc.TOID 
                                 AND docNaim.DOCUMENTSTYPE IN (2130, 2131, 2132) --Договоры найма.
-					    WHERE FROMID = {params.petitionId}
+                        WHERE FROMID = {params.petitionId}
                     ) 
                         THEN 'naim'
-					    ELSE 'sobst'
+                        ELSE 'sobst'
                 END SvedOLd 
-		    FROM WM_PETITION pet --Заявление
-		    ----Класс связки Обращения-Документы.
+            FROM WM_PETITION pet --Заявление
+            ----Класс связки Обращения-Документы.
                 INNER JOIN SPR_LINK_APPEAL_DOC linkDoc ON pet.OUID = linkDoc.FROMID
             ----Действующие документы.
                 INNER JOIN WM_ACTDOCUMENTS doc ON doc.OUID = linkDoc.TOID
                     AND doc.A_STATUS = {ACTIVESTATUS}   
                     AND (doc.DOCUMENTSTYPE IN {DOC.Military_st24_p4}
-				        OR doc.DOCUMENTSTYPE IN {DOC.Military_78FZ_st2}
-				        OR doc.DOCUMENTSTYPE IN {DOC.Military_fz247_st10}
-				        OR doc.DOCUMENTSTYPE IN {DOC.Military_fz283}
-			        ) 
+                        OR doc.DOCUMENTSTYPE IN {DOC.Military_78FZ_st2}
+                        OR doc.DOCUMENTSTYPE IN {DOC.Military_fz247_st10}
+                        OR doc.DOCUMENTSTYPE IN {DOC.Military_fz283}
+                    ) 
             ----Право собственности.
                 LEFT JOIN (
-				    SELECT 
-				        docSobst.OUID, wo.A_START_OWN_DATE, wo.A_END_OWN_DATE,
+                    SELECT 
+                        docSobst.OUID, wo.A_START_OWN_DATE, wo.A_END_OWN_DATE,
                         linkDoc1.FROMID, wo.A_PARTDENOMPART, wo.A_PARTNUMPART,
                         wo.A_PART, wo.A_OWNER_ID
-				    FROM SPR_LINK_APPEAL_DOC linkDoc1 			
+                    FROM SPR_LINK_APPEAL_DOC linkDoc1             
                         INNER JOIN WM_ACTDOCUMENTS docSobst ON docSobst.OUID = linkDoc1.TOID 
                             AND docSobst.DOCUMENTSTYPE IN (3800, 4196, 4017)
                         LEFT JOIN WM_OWNING wo ON docSobst.A_ESTATE = wo.A_OUID  
-				    WHERE docSobst.A_STATUS = 10				
+                    WHERE docSobst.A_STATUS = 10                
                 ) Sobstv ON pet.OUID = Sobstv.FROMID AND Sobstv.A_OWNER_ID = doc.PERSONOUID
                     AND (Sobstv.A_START_OWN_DATE IS NULL OR DATEDIFF(DAY, Sobstv.A_START_OWN_DATE, {params.startDate}) >= 0)
                     AND (Sobstv.A_END_OWN_DATE IS NULL OR DATEDIFF(DAY, Sobstv.A_END_OWN_DATE, {params.startDate}) <= 0)
-		    WHERE pet.OUID =  {params.petitionId} --Заявление.
+            WHERE pet.OUID =  {params.petitionId} --Заявление.
 )y on 1 = 1
    WHERE rec.num = 1
   ) x 
      LEFT JOIN (
-	SELECT  MAX(serv.OUID) servId,
-		serv.A_PERSONOUID pcId
-	FROM ESRN_SERV_SERV serv
+    SELECT  MAX(serv.OUID) servId,
+        serv.A_PERSONOUID pcId
+    FROM ESRN_SERV_SERV serv
         INNER JOIN LINK_ACTDOC_PC docLink ON docLink.A_FROMID = {ALG.doc_regFlatPersonList}
         INNER JOIN WM_PERSONAL_CARD docPc ON docLink.A_TOID = docPc.OUID
         AND (docPc.A_STATUS = {ACTIVESTATUS} OR docPc.A_STATUS IS NULL)
         AND serv.A_PERSONOUID = docPc.OUID
         INNER JOIN SPR_NPD_MSP_CAT mcn ON mcn.A_ID = serv.A_SERV
         INNER JOIN (
-		SELECT A_CATEGORY FROM SPR_NPD_MSP_CAT WHERE A_ID = {params.npdMSPCatId}
+        SELECT A_CATEGORY FROM SPR_NPD_MSP_CAT WHERE A_ID = {params.npdMSPCatId}
         ) curMCN ON ISNULL(mcn.A_CATEGORY,0) != ISNULL(curMCN.A_CATEGORY,0) 
         INNER JOIN PPR_SERV msp ON msp.A_ID = mcn.A_MSP
         AND msp.A_COD IN ('СompensationHousing','compCostsUtilities38FZ','compCostsPaymentHousingReg','compCostsUtilities5FZ','compCostsUtilities181FZ','compCostsUtilities1244FZ','compCostsUtilities175FZ','compCostsUtilities2FZ','compCostsUtilitiesReg','compCostsPaymentHousing')
