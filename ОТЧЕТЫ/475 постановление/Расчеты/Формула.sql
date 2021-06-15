@@ -1,51 +1,49 @@
 SELECT SUM(amount)
  FROM (
-  SELECT {params.spherePcId} as pcId, 
-   --SUM(amount*partNumerator/partDenominator)/COUNT(DISTINCT monthNum) as amount
-   sum(amount)/COUNT(DISTINCT monthNum) as amount
+  SELECT {params.spherePcId} AS pcId, 
+   sum(amount)/COUNT(DISTINCT monthNum) AS amount
   FROM (
    SELECT 
     CASE 
      WHEN calcTypeCode = 'point' THEN CASE WHEN recPcId = {params.personalCardId} AND recPcId = {params.spherePcId}  THEN 1 ELSE 0 END
      ELSE 1
-    END as partNumerator,
+    END AS partNumerator,
     CASE 
      WHEN calcTypeCode = 'point' THEN 1 
      WHEN calcTypeCode IN('area','livearea') THEN ISNULL(regCnt,{ALG.doc_regFlatPersonList_cnt})
      ELSE ISNULL(regCnt,{ALG.doc_regFlatPersonList_cnt}) 
-    END as partDenominator,
+    END AS partDenominator,
     payAmount, calcAmount,regTypeCode,
-    --CASE WHEN DATEDIFF(MONTH,recDate,{params.startDate}) = 0 THEN payAmount ELSE calcAmount END as amount,
 ----------------------------------------------------------------------------------------------
     CASE 
         --Старый расчет по долям.
         WHEN CONVERT(DATE, recDate) < CONVERT(DATE, '20200801') THEN
             CASE 
                 WHEN recAmType IN (68,69,70) then round(payAmount*{PPRCONST.warCompPercent}/100,2) 
-                WHEN recAmType IN (11,20,39,42,45,81,25, 388, 391, 392) then round((payAmount/cast(ISNULL(regCnt,registered) as float))*cast(ISNULL(lgotCnt,{ALG.doc_regFlatPersonListLgot_cnt}) as float) *{PPRCONST.warCompPercent}/100.00,2)
-                WHEN recAmType IN (162) and y.SvedOLd = 'naim' then round((payAmount/cast(ISNULL(regCnt,registered) as float))*cast(ISNULL(lgotCnt,{ALG.doc_regFlatPersonListLgot_cnt}) as float) *{PPRCONST.warCompPercent}/100.00,2)
-                WHEN recAmType IN (162,38) and y.SvedOLd = 'sobst' then round((payAmount*cast(y.shareSobst as float))*{PPRCONST.warCompPercent}/100,2) 
+                WHEN recAmType IN (11,20,39,42,45,81,25, 388, 391, 392) then round((payAmount/cast(ISNULL(regCnt,registered) AS float))*cast(ISNULL(lgotCnt,{ALG.doc_regFlatPersonListLgot_cnt}) AS float) *{PPRCONST.warCompPercent}/100.00,2)
+                WHEN recAmType IN (162) and y.SvedOLd = 'naim' then round((payAmount/cast(ISNULL(regCnt,registered) AS float))*cast(ISNULL(lgotCnt,{ALG.doc_regFlatPersonListLgot_cnt}) AS float) *{PPRCONST.warCompPercent}/100.00,2)
+                WHEN recAmType IN (162,38) and y.SvedOLd = 'sobst' then round((payAmount*cast(y.shareSobst AS float))*{PPRCONST.warCompPercent}/100,2) 
             END
         --Новый расчет по количеству. 
         ELSE 
             CASE 
                 WHEN recAmType IN (68,69,70) then round(payAmount*{PPRCONST.warCompPercent}/100,2) 
-	            WHEN recAmType IN (11,20,39,42,45,81,25, 388, 391, 392, 162, 38) then round((payAmount/cast(ISNULL(regCnt,registered) as float))*cast(ISNULL(lgotCnt,{ALG.doc_regFlatPersonListLgot_cnt}) as float) *{PPRCONST.warCompPercent}/100.00,2)
+	            WHEN recAmType IN (11,20,39,42,45,81,25, 388, 391, 392, 162, 38) then round((payAmount/cast(ISNULL(regCnt,registered) AS float))*cast(ISNULL(lgotCnt,{ALG.doc_regFlatPersonListLgot_cnt}) AS float) *{PPRCONST.warCompPercent}/100.00,2)
             END 
     END amount,
 ----------------------------------------------------------------------------------------------
-    recPcId, recDate, recAmType, DATEDIFF(MONTH,recDate,{params.startDate}) as monthNum, 
--- CASE WHEN DATEDIFF(MONTH,recDate,recCreateDate) <= 6 and DATEDIFF(MONTH,recDate,recCreateDate) >0 AND recNum = 1 THEN 1 ELSE 0 END  advance,
+    recPcId, recDate, recAmType, DATEDIFF(MONTH,recDate,{params.startDate}) AS monthNum, 
     MAX(CASE WHEN DATEDIFF(MONTH,recDate,recCreateDate) <= 48 AND recNum = 1 THEN 1 ELSE 0 END) OVER(PARTITION BY recPcId, recType) advance,
-    MAX(recDate) OVER(PARTITION BY recPcId, recType) as recAmMaxDate
+    MAX(recDate) OVER(PARTITION BY recPcId, recType) AS recAmMaxDate
    FROM (
-    SELECT rec.A_OUID as recId, rec.A_RECEIPT_TYPE as recType, recType.A_CODE regTypeCode, rec.A_PAYER as recPcId, rec.A_PAYMENT_DATE as recDate, rec.A_CREATEDATE as recCreateDate, rec.A_NUM_LIVING as regCnt, 
-     recAm.A_OUID as recAmId, recAm.A_NAME_AMOUNT as recAmType, recAm.A_PAY as payAmount, recAm.A_PAY as calcAmount,
-     recAmTypeLink.A_HCV_AREA_OF_DISTRIB as hcsSphere, recAmCalcType.A_CODE as calcTypeCode,
-     ROW_NUMBER() OVER(PARTITION BY rec.A_OUID, recAm.A_OUID ORDER BY recTypeLink.A_OUID) as num,
-     wa.A_AMOUNT_PERSON registered, rec.A_NUM_LGOTA lgotCnt,
-     DENSE_RANK() OVER(PARTITION BY rec.A_PAYER, rec.A_RECEIPT_TYPE ORDER BY YEAR(rec.A_PAYMENT_DATE) DESC, MONTH(rec.A_PAYMENT_DATE) DESC) as recNum,
-     DENSE_RANK() OVER(PARTITION BY rec.A_PAYER, recAm.A_NAME_AMOUNT ORDER BY YEAR(rec.A_PAYMENT_DATE) DESC, MONTH(rec.A_PAYMENT_DATE) DESC) as recAmNum
+    SELECT 
+        rec.A_RECEIPT_TYPE AS recType,      rec.A_PAYER AS recPcId,     rec.A_PAYMENT_DATE AS recDate, 
+        rec.A_CREATEDATE AS recCreateDate,  rec.A_NUM_LIVING AS regCnt, rec.A_NUM_LGOTA AS lgotCnt,
+        recAm.A_NAME_AMOUNT AS recAmType,   recAm.A_PAY AS payAmount,   recAmCalcType.A_CODE AS calcTypeCode,
+        wa.A_AMOUNT_PERSON AS registered, 
+        ROW_NUMBER() OVER(PARTITION BY rec.A_OUID, recAm.A_OUID ORDER BY recTypeLink.A_OUID) AS num,
+        DENSE_RANK() OVER(PARTITION BY rec.A_PAYER, rec.A_RECEIPT_TYPE ORDER BY YEAR(rec.A_PAYMENT_DATE) DESC, MONTH(rec.A_PAYMENT_DATE) DESC) AS recNum,
+        DENSE_RANK() OVER(PARTITION BY rec.A_PAYER, recAm.A_NAME_AMOUNT ORDER BY YEAR(rec.A_PAYMENT_DATE) DESC, MONTH(rec.A_PAYMENT_DATE) DESC) AS recAmNum
     FROM WM_RECEIPT rec
     INNER JOIN SPR_RECEIPT_TYPE recType ON recType.A_OUID = rec.A_RECEIPT_TYPE
     INNER JOIN SPR_LINK_MSP_RTYPE recTypeLink ON recTypeLink.TOID = recType.A_OUID
@@ -136,8 +134,7 @@ SELECT SUM(amount)
         WHERE (serv.A_STATUS = {ACTIVESTATUS} OR serv.A_STATUS IS NULL)
         GROUP BY serv.A_PERSONOUID
   ) servs ON servs.pcId = x.recPcId
-  WHERE /*(servs.servId IS NULL OR x.regTypeCode IS NULL OR x.regTypeCode NOT IN ('hcs', 'hcs_gas', 'hcs_electro')) 
-   AND*/ (DATEDIFF(MONTH,recDate,{params.startDate}) = 0 
+  WHERE (DATEDIFF(MONTH,recDate,{params.startDate}) = 0 
       OR (advance = 1 AND DATEDIFF(MONTH,recAmMaxDate,{params.startDate}) BETWEEN 1 AND 24 AND DATEDIFF(MONTH,recDate,recAmMaxDate) = 0))
   GROUP BY recPcId, recAmType
  ) x
