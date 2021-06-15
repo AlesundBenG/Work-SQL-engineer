@@ -66,11 +66,11 @@ SELECT SUM(amount)
             ----Действующие документы.
                 LEFT JOIN WM_ACTDOCUMENTS wa ON wa.OUID = {ALG.doc_regFlatPersonList} 
                     AND ISNULL(wa.A_STATUS, {ACTIVESTATUS}) = {ACTIVESTATUS}
-            WHERE rec.A_ADDR_ID = {ALG.doc_regFlatPersonList_addr}
-                AND rec.A_FACT = 1
-                AND rec.A_PAYER = ISNULL(docPc.OUID, {params.personalCardId}) 
-                AND ISNULL(rec.A_STATUS, {ACTIVESTATUS})= {ACTIVESTATUS}
-                AND recAm.A_NAME_AMOUNT in (70,68,69,11,20,39,42,45,81,25,38,162, 388, 391, 392)
+            WHERE rec.A_ADDR_ID = {ALG.doc_regFlatPersonList_addr} --Квитанция по адресу, указанному в документе о совместно зарегистрированных.
+                AND rec.A_FACT = 1 --Фактическая оплата.
+                AND rec.A_PAYER = ISNULL(docPc.OUID, {params.personalCardId}) --Квитанции людей, которые указаны в перечне лиц документа совместно зарегистрированных.
+                AND ISNULL(rec.A_STATUS, {ACTIVESTATUS})= {ACTIVESTATUS} --Статус квитанции в БД "Действует".
+                AND recAm.A_NAME_AMOUNT IN (70,68,69,11,20,39,42,45,81,25,38,162, 388, 391, 392) --Виды услуг.
                 AND (recAm.A_NAME_AMOUNT = 69 AND rec.A_PAYER = {params.personalCardId} OR recAm.A_NAME_AMOUNT <> 69) --За телефон только у плательщика.
     ) rec 
     left join 
