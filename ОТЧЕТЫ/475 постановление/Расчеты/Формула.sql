@@ -13,7 +13,7 @@ SELECT SUM(amount)
      WHEN calcTypeCode IN('area','livearea') THEN ISNULL(regCnt,{ALG.doc_regFlatPersonList_cnt})
      ELSE ISNULL(regCnt,{ALG.doc_regFlatPersonList_cnt}) 
     END AS partDenominator,
-    payAmount, calcAmount,regTypeCode,
+    payAmount, 
 ----------------------------------------------------------------------------------------------
     CASE 
         --Старый расчет по долям.
