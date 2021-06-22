@@ -71,7 +71,7 @@ WHERE OUID = @doc_regFlatPersonList
                 rec.A_RECEIPT_TYPE AS recType,      rec.A_PAYER AS recPcId,     rec.A_PAYMENT_DATE AS recDate, 
                 rec.A_CREATEDATE AS recCreateDate,  rec.A_NUM_LIVING AS regCnt, rec.A_NUM_LGOTA AS lgotCnt,
                 recAm.A_NAME_AMOUNT AS recAmType,   recAm.A_PAY AS payAmount,   recAmCalcType.A_CODE AS calcTypeCode,
-                wa.A_AMOUNT_PERSON AS registered, 
+                wa.A_AMOUNT_PERSON AS registered,   sht.A_NAME AS NameType,
                 ROW_NUMBER() OVER(PARTITION BY rec.A_OUID, recAm.A_OUID ORDER BY recTypeLink.A_OUID) AS num,
                 DENSE_RANK() OVER(PARTITION BY rec.A_PAYER, rec.A_RECEIPT_TYPE ORDER BY YEAR(rec.A_PAYMENT_DATE) DESC, MONTH(rec.A_PAYMENT_DATE) DESC) AS recNum,
                 DENSE_RANK() OVER(PARTITION BY rec.A_PAYER, recAm.A_NAME_AMOUNT ORDER BY YEAR(rec.A_PAYMENT_DATE) DESC, MONTH(rec.A_PAYMENT_DATE) DESC) AS recAmNum
@@ -84,6 +84,8 @@ WHERE OUID = @doc_regFlatPersonList
             ----Детализация платежного документа. 
                 INNER JOIN WM_RECEIPT_AMOUNT recAm ON recAm.A_RECEIPT = rec.A_OUID
                     AND ISNULL(recAm.A_STATUS, @ACTIVESTATUS) = @ACTIVESTATUS
+            ----Виды услуг.
+                INNER JOIN SPR_HSC_TYPES sht ON recAm.A_NAME_AMOUNT = sht.A_ID
             ----Класс связки МСП-ЛК-НПД - Вид ЖКУ.
                 INNER JOIN SPR_LINK_NPD_MSP_CAT_HCS recAmTypeLink ON recAmTypeLink.TOID = recAm.A_NAME_AMOUNT
                     AND recAmTypeLink.FROMID = @mspLkNpdId
@@ -101,5 +103,5 @@ WHERE OUID = @doc_regFlatPersonList
                 AND rec.A_FACT = 1 --Фактическая оплата.
                 AND rec.A_PAYER = ISNULL(docPc.OUID, @personalCardId) --Квитанции людей, которые указаны в перечне лиц документа совместно зарегистрированных.
                 AND ISNULL(rec.A_STATUS, @ACTIVESTATUS)= @ACTIVESTATUS--Статус квитанции в БД "Действует".
-                AND recAm.A_NAME_AMOUNT IN (70,68,69,11,20,39,42,45,81,25,38,162, 388, 391, 392) --Виды услуг.
+                AND recAm.A_NAME_AMOUNT IN (70, 68, 69, 11, 20, 39, 42, 45, 81, 25, 38, 162, 388, 391, 392) --Виды услуг.
                 AND (recAm.A_NAME_AMOUNT = 69 AND rec.A_PAYER = @personalCardId OR recAm.A_NAME_AMOUNT <> 69) --За телефон только у плательщика.
