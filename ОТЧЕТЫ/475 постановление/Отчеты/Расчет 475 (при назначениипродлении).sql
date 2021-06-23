@@ -1,19 +1,17 @@
-DECLARE @pet int
-DECLARE @pcpet int
-DECLARE @serv int
-DECLARE @phones VARCHAR(100)
-DECLARE @petType int
-declare @d1 date
-declare @d2 date
+
+
+
+
+
+
 DECLARE @reg int
 DECLARE @lg int
 DECLARE @docs VARCHAR(100)
 DECLARE @docstype VARCHAR(100)
 DECLARE @part float
-declare @dreg date
+
 DECLARE @fls int
-/*Льготополучатель*/
-DECLARE @pcpetl int
+
 /*Адрес получателей льготы*/
 DECLARE @adrrl int
 /*Дата начала действия основания*/
@@ -25,48 +23,82 @@ IF OBJECT_ID('tempdb..#tmps') IS NOT NULL BEGIN DROP TABLE #tmps END
 IF OBJECT_ID('tempdb..#tmpspr') IS NOT NULL BEGIN DROP TABLE #tmpspr END
 IF OBJECT_ID('tempdb..#tmpr') IS NOT NULL BEGIN DROP TABLE #tmpr END
 
---5822584
---6362998
 
---5848915
---6346814
 
-set @pet = #objectID# 
-SET @phones = ''
+--Идентификатор заявления отчета.
+DECLARE @petitionID INT
+--SET @petitionID = #objectID# 
+SET @petitionID = 6514261 
+--6514261   Мать
+--6514276   Дочь
+--6514294   Сын
 
-/*Заявитель, тип заявления, дата регистрации заявления, получатель льготы*/
-select @pcpet = app.A_PERSONCARD, @petType = pet.A_PETITION_TYPE, @dreg = CONVERT(date, app.A_DATE_REG), @pcpetl = pet.A_MSPHOLDER
-from WM_PETITION pet
-	join WM_APPEAL_NEW app on app.OUID = pet.OUID and app.A_STATUS = 10
-where pet.OUID = @pet
 
-/*Адрес регистрации заявителя*/
-/*
-select @adrr = A_REGFLAT
-from WM_PERSONAL_CARD
-where OUID = @pcpet
-*/
 
-/*Назначение*/
-if @petType = 1
-  begin
-   select @serv = ess.OUID
-   from ESRN_SERV_SERV ess
-	    join WM_PETITION pet on ess.A_REQUEST = @pet
-   where ess.A_STATUS = 10 and ess.A_SERV = 310
-  end
- else
-  begin
-   select @serv = A_EXTEND_SERV_BASE
-   from WM_PETITION
-   where OUID = @pet
-  end
+
+
+
+--Информация из заявления.
+DECLARE @HolderPetition     INT     --Заявитель.
+DECLARE @petitionType       INT     --Тип заявления (На назначение или возобновление).
+declare @petitionDateReg    DATE    --Дата регистрации заявления.
+DECLARE @HolderMSP          INT     --Льготодержатель.
+DECLARE @dateFrom                 DATE
+DECLARE @dateTo                 DATE
+SELECT 
+    @HolderPetition     = appeal.A_PERSONCARD,              
+    @petitionType       = petition.A_PETITION_TYPE,         
+    @petitionDateReg    = CONVERT(date, appeal.A_DATE_REG),  
+    @HolderMSP          = petition.A_MSPHOLDER               
+FROM WM_PETITION petition --Заявления.
+----Обращение гражданина.
+    INNER JOIN WM_APPEAL_NEW appeal 
+        ON appeal.OUID = petition.OUID 
+            AND appeal.A_STATUS = 10 --Статус в БД "Действует".
+WHERE petition.OUID = @petitionID --Заявление отчета.
+
+
+
+--Если заявление на назначение.
+IF @petitionType = 1 BEGIN
+    SET @dateFrom = DATEADD(DAY, 1 - DAY(@petitionDateReg), @petitionDateReg)      
+    SET @dateTo = DATEADD(DAY, -1, DATEADD(MONTH, 6, @dateFrom))                             
+END
+--Если на продление.
+ELSE BEGIN
+    --Дата окончания продляемого назначения в качестве даты начала.
+    SELECT 
+        @dateFrom = DATEADD(DAY, 1, CONVERT(DATE, t.SERV_END_DATE))
+    FROM (
+        SELECT
+            period.A_LASTDATE AS SERV_END_DATE,
+            ROW_NUMBER() OVER (PARTITION BY petition.OUID ORDER BY period.STARTDATE DESC) AS gnum 
+        FROM WM_PETITION petition --Заявления.
+        ----Период предоставления МСП.
+            INNER JOIN SPR_SERV_PERIOD period
+                ON period.A_SERV = petition.A_EXTEND_SERV_BASE --Назначение, которое продлевается.
+                    AND period.A_STATUS = 10 --Статус в БД "Действует".
+        WHERE petition.OUID = @petitionID
+    ) t
+    WHERE t.gnum = 1
+    SET @dateTo = DATEADD(DAY, -1, DATEADD(MONTH, 6, @dateFrom)) 
+END
   
-
--- Телефоны
+  
+--Телефоны.
+DECLARE @phones VARCHAR(100)
+SET @phones = ''
 SELECT @phones = @phones + ' ' + phone.A_NUMBER
 FROM WM_PCPHONE phone 
-WHERE phone.A_PERSCARD = @pcpet	AND phone.A_STATUS = 10
+WHERE phone.A_PERSCARD = @HolderPetition	
+    AND phone.A_STATUS = 10 --Статус в БД "Действует".
+  
+  
+SELECT @dateFrom, @dateTo, @petitionType
+  
+  
+/*
+
 
 /*Зарегистрированные*/
 select @reg = doc.A_AMOUNT_PERSON, @adrrl = doc.A_REGFLAT, @lg = doc.A_AMOUNT_LGOT
@@ -76,37 +108,25 @@ from SPR_LINK_APPEAL_DOC ld
 	(select MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE
 	from SPR_LINK_APPEAL_DOC ld1 
 		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.DOCUMENTSTYPE = 2091
-	where ld1.FROMID = @pet) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE
-where ld.FROMID = @pet
+	where ld1.FROMID = @petitionID) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE
+where ld.FROMID = @petitionID
 
-/*Льготники*/
-/*
-select @lg = COUNT(*)
-from SPR_LINK_APPEAL_DOC ld 
-	join WM_ACTDOCUMENTS doc on ld.TOID = doc.OUID and doc.A_STATUS = 10 and doc.DOCUMENTSTYPE = 2091
-	join 
-	(select MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE
-	from SPR_LINK_APPEAL_DOC ld1 
-		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.DOCUMENTSTYPE = 2091
-	where ld1.FROMID = @pet) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE
-	join LINK_ACTDOC_PC ldpc on ldpc.A_FROMID = doc.OUID
-where ld.FROMID = @pet
-*/
+
 
 if @reg is null set @reg = @lg
 
 /*Документ о владении*/
 select @docs = pprDoc.a_name, @docstype = pprDoc.A_CODE
 from SPR_LINK_APPEAL_DOC ld 
-	join WM_ACTDOCUMENTS doc on ld.TOID = doc.OUID and doc.A_STATUS = 10 and doc.PERSONOUID = @pcpetl
+	join WM_ACTDOCUMENTS doc on ld.TOID = doc.OUID and doc.A_STATUS = 10 and doc.PERSONOUID = @HolderMSP
 	join PPR_DOC pprDoc ON pprDoc.A_ID = doc.DOCUMENTSTYPE and pprDoc.A_PARENT = 2090 and pprDoc.A_STATUS = 10
 	join 
 	(select MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE
 	from SPR_LINK_APPEAL_DOC ld1 
-		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.PERSONOUID = @pcpetl
+		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.PERSONOUID = @HolderMSP
 		join PPR_DOC pprDoc1 ON pprDoc1.A_ID = doc1.DOCUMENTSTYPE and pprDoc1.A_PARENT = 2090 and pprDoc1.A_STATUS = 10
-	where ld1.FROMID = @pet) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE
-where ld.FROMID = @pet
+	where ld1.FROMID = @petitionID) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE
+where ld.FROMID = @petitionID
 
 /*Справки о праве*/
 select rtrim(ISNULL(SURNAME.A_NAME, '') + ' ' + ISNULL(FIRSTNAME.A_NAME,'') + ' ' + ISNULL(SECONDNAME.A_NAME, '')) as relativeFIO,
@@ -120,14 +140,14 @@ from SPR_LINK_APPEAL_DOC ld
 	(select doc1.PERSONOUID, MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE
 	from SPR_LINK_APPEAL_DOC ld1 
 		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.DOCUMENTSTYPE in (1796, 2067, 3893, 3894)
-	where ld1.FROMID = @pet
+	where ld1.FROMID = @petitionID
 	group by doc1.PERSONOUID) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE and doc.PERSONOUID = md.PERSONOUID
 	left outer join SPR_GROUP_ROLE sgr on sgr.OUID = doc.A_RELATION
 	join WM_PERSONAL_CARD pc on doc.PERSONOUID = pc.OUID and pc.A_STATUS = 10
 	left outer join SPR_FIO_SURNAME AS SURNAME on SURNAME.OUID = pc.SURNAME
 	left outer join SPR_FIO_NAME AS FIRSTNAME on FIRSTNAME.OUID = pc.A_NAME
 	left outer join SPR_FIO_SECONDNAME AS SECONDNAME on SECONDNAME.OUID = pc.A_SECONDNAME
-where ld.FROMID = @pet
+where ld.FROMID = @petitionID
 
 /*Доли собственности*/
 select own.A_OUID, own.A_OWNER_ID, own.A_PART
@@ -139,12 +159,12 @@ from WM_OWNING own
 	 from WM_OWNING own1
 		join #tmpspr l1 on l1.PERSONOUID = own1.A_OWNER_ID
 	 where own1.A_ADDR_ID = @adrrl and own1.A_STATUS = 10
-		and (own1.A_START_OWN_DATE is null or CONVERT(date, own1.A_START_OWN_DATE) <= @dreg)
-		and (own1.A_END_OWN_DATE is null or CONVERT(date, own1.A_END_OWN_DATE) >= @dreg)
+		and (own1.A_START_OWN_DATE is null or CONVERT(date, own1.A_START_OWN_DATE) <= @petitionDateReg)
+		and (own1.A_END_OWN_DATE is null or CONVERT(date, own1.A_END_OWN_DATE) >= @petitionDateReg)
 	 group by own1.A_OWNER_ID) mo on mo.A_OWNER_ID = own.A_OWNER_ID and mo.A_OUID = own.A_OUID
 where own.A_ADDR_ID = @adrrl and own.A_STATUS = 10
-	and (own.A_START_OWN_DATE is null or CONVERT(date, own.A_START_OWN_DATE) <= @dreg)
-	and (own.A_END_OWN_DATE is null or CONVERT(date, own.A_END_OWN_DATE) >= @dreg)
+	and (own.A_START_OWN_DATE is null or CONVERT(date, own.A_START_OWN_DATE) <= @petitionDateReg)
+	and (own.A_END_OWN_DATE is null or CONVERT(date, own.A_END_OWN_DATE) >= @petitionDateReg)
 
 select @part = SUM(A_PART)
 from #tmps
@@ -161,25 +181,10 @@ if (@docs is not null and @docstype in ('naim', 'specNaim', 'contractSocialHire'
    if isnull(@part, 0) = 0 set @part = 1
   end
 
-select @dnosn = min(A_DOCBASESTARTDATE) from #tmpspr where PERSONOUID = @pcpetl
+select @dnosn = min(A_DOCBASESTARTDATE) from #tmpspr where PERSONOUID = @HolderMSP
 
 
-/*Оформлена с по*/
-if @petType = 1     /*Заявление на назначение*/
-  begin
-   set @d1 = dateadd("day", 1-DAY(@dreg), @dreg)
-  end
- else
-  begin
-   select @d1 = dateadd(day, 1, convert(date, ssp.A_LASTDATE))
-   from SPR_SERV_PERIOD ssp
-	   join
-	    (select MAX(STARTDATE) as sd
-		from SPR_SERV_PERIOD
-		where A_SERV = @serv and A_STATUS = 10) md on md.sd = ssp.STARTDATE
-   where ssp.A_SERV = @serv and ssp.A_STATUS = 10  
-  end
-set @d2 = DATEADD(DAY, -1, DATEADD(MONTH, 6, @d1))
+
 
 
 ----------------------------------------------------------------------------------------
@@ -189,7 +194,7 @@ set @d2 = DATEADD(DAY, -1, DATEADD(MONTH, 6, @d1))
 select convert(char, app.A_DATE_REG, 104) as petitionDate,
 	rtrim(ISNULL(SURNAME.A_NAME, '') + ' ' + ISNULL(FIRSTNAME.A_NAME,'') + ' ' + ISNULL(SECONDNAME.A_NAME, '')) as FIO,
 	@phones as phone, adr.A_ADRTITLE as address,
-	convert(char, @d1, 104) as dateFrom, case when @d2 is not null then convert(char, @d2, 104) else '' end as dateTo,
+	convert(char, @dateFrom, 104) as dateFrom, case when @dateTo is not null then convert(char, @dateTo, 104) else '' end as dateTo,
 	@reg as qz, @lg as ql,
 	isnull(@docs, '') as doc,
 	case
@@ -203,7 +208,7 @@ from WM_PETITION pet
 	left outer join SPR_FIO_NAME AS FIRSTNAME on FIRSTNAME.OUID = pc.A_NAME
 	left outer join SPR_FIO_SECONDNAME AS SECONDNAME on SECONDNAME.OUID = pc.A_SECONDNAME
 	left outer join WM_ADDRESS adr on adr.OUID = pc.A_REGFLAT and adr.A_STATUS = 10
-where pet.OUID = @pet
+where pet.OUID = @petitionID
   
 --Вывод справки о праве.
 select spr.relativeFIO, spr.ser, spr.num, spr.relation, spr.date,
@@ -258,11 +263,11 @@ from WM_RECEIPT rec
 	join
 	(select MAX(convert(date, dateadd("day", 1-DAY(rec1.A_PAYMENT_DATE), rec1.A_PAYMENT_DATE))) as d
 	from WM_RECEIPT rec1
-	where rec1.A_STATUS = 10 and rec1.A_PAYER = @pcpetl and rec1.A_ADDR_ID = @adrrl and convert(date, dateadd("day", 1-DAY(rec1.A_PAYMENT_DATE), rec1.A_PAYMENT_DATE)) < convert(date, dateadd("day", 1-DAY(@dreg), @dreg))) md
+	where rec1.A_STATUS = 10 and rec1.A_PAYER = @HolderMSP and rec1.A_ADDR_ID = @adrrl and convert(date, dateadd("day", 1-DAY(rec1.A_PAYMENT_DATE), rec1.A_PAYMENT_DATE)) < convert(date, dateadd("day", 1-DAY(@petitionDateReg), @petitionDateReg))) md
 	 on convert(date, dateadd("day", 1-DAY(rec.A_PAYMENT_DATE), rec.A_PAYMENT_DATE)) = md.d
 	join WM_RECEIPT_AMOUNT reca on reca.A_RECEIPT = rec.A_OUID and reca.A_STATUS = 10 and A_NAME_AMOUNT in (68, 69, 70, 11, 20, 39, 42, 45, 81, 25, 162, 38, 388, 391, 392)
 	left outer join SPR_HSC_TYPES s on s.A_STATUS = 10 and s.A_ID = A_NAME_AMOUNT
-where rec.A_STATUS = 10 and rec.A_PAYER = @pcpetl and rec.A_ADDR_ID = @adrrl and convert(date, dateadd("day", 1-DAY(rec.A_PAYMENT_DATE), rec.A_PAYMENT_DATE)) < convert(date, dateadd("day", 1-DAY(@dreg), @dreg))
+where rec.A_STATUS = 10 and rec.A_PAYER = @HolderMSP and rec.A_ADDR_ID = @adrrl and convert(date, dateadd("day", 1-DAY(rec.A_PAYMENT_DATE), rec.A_PAYMENT_DATE)) < convert(date, dateadd("day", 1-DAY(@petitionDateReg), @petitionDateReg))
 	and (@fls = 0 and A_NAME_AMOUNT <> 38 or @fls = 1)
 order by s.A_NAME
 
@@ -323,3 +328,4 @@ SELECT
   ------------------------------------------------------------------------------
     ROUND(result, 2) AS result
 FROM #tmpr
+*/
