@@ -1,19 +1,9 @@
-
-
-
-
-
-
-DECLARE @reg int
-DECLARE @lg int
 DECLARE @docs VARCHAR(100)
 DECLARE @docstype VARCHAR(100)
 DECLARE @part float
 
 DECLARE @fls int
 
-/*Адрес получателей льготы*/
-DECLARE @adrrl int
 /*Дата начала действия основания*/
 declare @dnosn date
 
@@ -28,7 +18,7 @@ IF OBJECT_ID('tempdb..#tmpr') IS NOT NULL BEGIN DROP TABLE #tmpr END
 --Идентификатор заявления отчета.
 DECLARE @petitionID INT
 --SET @petitionID = #objectID# 
-SET @petitionID = 6514261 
+SET @petitionID = 6514294 
 --6514261   Мать
 --6514276   Дочь
 --6514294   Сын
@@ -94,26 +84,38 @@ WHERE phone.A_PERSCARD = @HolderPetition
     AND phone.A_STATUS = 10 --Статус в БД "Действует".
   
   
-SELECT @dateFrom, @dateTo, @petitionType
+--Зарегистрированные.
+DECLARE @countReg    INT
+DECLARE @countLg     INT
+DECLARE @adrrl  INT
+SELECT 
+    @countReg = ISNULL(t.COUNT_PEOPLE, t.COUNT_LGOT), 
+    @countLg = t.COUNT_LGOT,
+    @adrrl = t.ADDRESS_REG
+FROM (
+    SELECT 
+        actDocuments.A_AMOUNT_PERSON    AS COUNT_PEOPLE,
+        actDocuments.A_AMOUNT_LGOT      AS COUNT_LGOT,
+        actDocuments.A_REGFLAT          AS ADDRESS_REG, 
+        ROW_NUMBER() OVER (PARTITION BY appeal_DOC.FROMID ORDER BY actDocuments.ISSUEEXTENSIONSDATE DESC) AS gnum 
+    FROM SPR_LINK_APPEAL_DOC appeal_DOC
+    ----Действующие документы. 
+        INNER JOIN WM_ACTDOCUMENTS actDocuments 
+            ON appeal_DOC.TOID = actDocuments.OUID 
+                AND actDocuments.A_STATUS = 10 --Статус в БД "Действует". 
+                AND actDocuments.DOCUMENTSTYPE = 2091 --Документ, содержащий сведения о лицах, зарегистрированных совместно с заявителем по месту его постоянного жительства.
+    WHERE appeal_DOC.FROMID = @petitionID  
+) t
+WHERE t.gnum = 1
   
+
+
   
 /*
 
 
-/*Зарегистрированные*/
-select @reg = doc.A_AMOUNT_PERSON, @adrrl = doc.A_REGFLAT, @lg = doc.A_AMOUNT_LGOT
-from SPR_LINK_APPEAL_DOC ld 
-	join WM_ACTDOCUMENTS doc on ld.TOID = doc.OUID and doc.A_STATUS = 10 and doc.DOCUMENTSTYPE = 2091
-	join 
-	(select MAX(doc1.ISSUEEXTENSIONSDATE) as ISSUEEXTENSIONSDATE
-	from SPR_LINK_APPEAL_DOC ld1 
-		join WM_ACTDOCUMENTS doc1 on ld1.TOID = doc1.OUID and doc1.A_STATUS = 10 and doc1.DOCUMENTSTYPE = 2091
-	where ld1.FROMID = @petitionID) md on md.ISSUEEXTENSIONSDATE = doc.ISSUEEXTENSIONSDATE
-where ld.FROMID = @petitionID
 
 
-
-if @reg is null set @reg = @lg
 
 /*Документ о владении*/
 select @docs = pprDoc.a_name, @docstype = pprDoc.A_CODE
@@ -195,7 +197,7 @@ select convert(char, app.A_DATE_REG, 104) as petitionDate,
 	rtrim(ISNULL(SURNAME.A_NAME, '') + ' ' + ISNULL(FIRSTNAME.A_NAME,'') + ' ' + ISNULL(SECONDNAME.A_NAME, '')) as FIO,
 	@phones as phone, adr.A_ADRTITLE as address,
 	convert(char, @dateFrom, 104) as dateFrom, case when @dateTo is not null then convert(char, @dateTo, 104) else '' end as dateTo,
-	@reg as qz, @lg as ql,
+	@countReg as qz, @countLg as ql,
 	isnull(@docs, '') as doc,
 	case
 	 when @part = 1 then '1' 
@@ -226,8 +228,8 @@ order by 1
 
 --Расчет.
 select reca.A_PAY as ServicePay, reca.A_NAME_AMOUNT,
-	 case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else @reg end as qz,
-	 case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else @lg end as ql,
+	 case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else @countReg end as qz,
+	 case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else @countLg end as ql,
 	case
 	 when @part = 1 then '1' 
 	 else CONVERT(varchar(15), @part) 
@@ -239,8 +241,8 @@ select reca.A_PAY as ServicePay, reca.A_NAME_AMOUNT,
         WHEN CONVERT(DATE, rec.A_PAYMENT_DATE) < CONVERT(DATE, '20200801') THEN CAST (
             CASE
                 WHEN A_NAME_AMOUNT IN (68, 69, 70) THEN reca.A_PAY * 0.6
-                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392) THEN reca.A_PAY/(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else @reg end)*(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else @lg end) * 0.6
-                WHEN A_NAME_AMOUNT IN (162, 38) AND @fls = 0 THEN reca.A_PAY/(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else @reg end)*(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else @lg end) * 0.6
+                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392) THEN reca.A_PAY/(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else @countReg end)*(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else @countLg end) * 0.6
+                WHEN A_NAME_AMOUNT IN (162, 38) AND @fls = 0 THEN reca.A_PAY/(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else @countReg end)*(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else @countLg end) * 0.6
                 WHEN A_NAME_AMOUNT IN (162, 38) AND @fls = 1 THEN reca.A_PAY * @part * 0.6
                 ELSE 0
             END AS DECIMAL(10, 4)
@@ -249,7 +251,7 @@ select reca.A_PAY as ServicePay, reca.A_NAME_AMOUNT,
         ELSE CAST (
 	        CASE
                 WHEN A_NAME_AMOUNT IN (68, 69, 70) THEN reca.A_PAY * 0.6
-                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392, 162, 38) THEN reca.A_PAY/(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else @reg end)*(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else @lg end) * 0.6
+                WHEN A_NAME_AMOUNT IN (11, 20, 39, 42, 45, 81, 25, 388, 391, 392, 162, 38) THEN reca.A_PAY/(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LIVING else @countReg end)*(case when isnull(rec.A_NUM_LIVING, 0) <> 0 and isnull(rec.A_NUM_LGOTA, 0) <> 0 then rec.A_NUM_LGOTA else @countLg end) * 0.6
                 else 0
             END AS DECIMAL(10, 4))
     END AS result,
