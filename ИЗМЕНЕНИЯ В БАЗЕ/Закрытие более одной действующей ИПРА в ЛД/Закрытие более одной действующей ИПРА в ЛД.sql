@@ -138,23 +138,29 @@ FROM WM_REH_REFERENCE Ipra --Реабилитационные мероприят
 ----Действующие документы
     INNER JOIN WM_ACTDOCUMENTS Doc
         ON Ipra.A_IPR = Doc.OUID 
-            AND Doc.A_STATUS=10     --Документ не удален из БД
+            AND Doc.A_STATUS = 10 --Документ не удален из БД
 ----Рекомендованные мероприятия
 	INNER JOIN WM_SOCIAL_REHABILITATION Reh
         ON Reh.A_REHAB_REF=Ipra.OUID       
-            and Reh.A_STATUS=10                 --Статус в БД - действует
+            and Reh.A_STATUS = 10               --Статус в БД - действует
             AND Reh.A_STATUS_EVENT_IPRA is NULL --Нет статуса мероприятия
             AND Reh.A_RHB_EVNT is NULL          --Не указан подтип мероприятия
 ----Подтипы мероприятий из справочника ЕСРН
 		LEFT JOIN SPR_subTYPE_SOC_REHUB SubTypeReh
 			ON SubTypeReh.a_type_of_event = Reh.A_RHB_TYPE
 			    AND SubTypeReh.a_type_of_event IN (20, 21, 18, 17)
+----Рекомендованные мероприятия, которые уже имеются.    
+    LEFT JOIN WM_SOCIAL_REHABILITATION Reh2
+        ON Reh2.A_REHAB_REF = Ipra.OUID 
+            AND Reh2.A_STATUS = 10
+            AND Reh2.A_RHB_TYPE = Reh.A_RHB_TYPE
+            AND Reh2.A_RHB_EVNT = SubTypeReh.A_OUID
 ----Документ ИПРА.
     INNER JOIN WM_ACTDOCUMENTS Docs
-        ON Ipra.A_IPR =Docs.ouid
-WHERE Ipra.A_STATUS=10 ---ИПРА не удалена из БД
+        ON Ipra.A_IPR = Docs.ouid
+WHERE Ipra.A_STATUS = 10 ---ИПРА не удалена из БД
     AND Ipra.OUID IN (SELECT IPRA_OUID FROM #IPRA_FOR_CLOSE) --Вставляем в те, которые собираемся закрывать.
-
+    AND Reh2.A_OUID IS NULL --Мероприятие, которое мы хотим добавить, отсутствует.
 
 --------------------------------------------------------------------------------------------------------------------------------
 
