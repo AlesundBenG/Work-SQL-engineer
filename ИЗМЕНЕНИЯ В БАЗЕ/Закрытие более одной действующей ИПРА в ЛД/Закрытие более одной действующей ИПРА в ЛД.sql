@@ -121,9 +121,10 @@ WHERE END_DATE IS NULL
 
 
 --Формирование мероприятий для отправки в витрину, если они еще не сформированы.
-INSERT INTO WM_SOCIAL_REHABILITATION (A_GUID,/*A_CROWNER*/A_TS, A_STATUS, A_STATUS_EVENT_IPRA,/*A_EDITOR*/A_CREATEDATE, A_DATE_START, A_DATE_END, A_REHAB_REF, A_NEED, A_RHB_TYPE, A_RHB_EVNT)
+INSERT INTO WM_SOCIAL_REHABILITATION (A_GUID, A_CROWNER, A_TS, A_STATUS, A_STATUS_EVENT_IPRA,/*A_EDITOR*/A_CREATEDATE, A_DATE_START, A_DATE_END, A_REHAB_REF, A_NEED, A_RHB_TYPE, A_RHB_EVNT)
 SELECT 
     NEWID()                     AS A_GUID,					---Глобальный идентификатор
+    10314303                    AS A_CROWNER,               ---Автор
     GETDATE()                   AS A_TS,					---Дата модификации
     10                          AS A_STATUS,				---Статус в БД
     1                           AS A_STATUS_EVENT_IPRA,		---Статус мероприятия ИПРА
@@ -141,7 +142,7 @@ FROM WM_REH_REFERENCE Ipra --Реабилитационные мероприят
             AND Doc.A_STATUS = 10 --Документ не удален из БД
 ----Рекомендованные мероприятия
 	INNER JOIN WM_SOCIAL_REHABILITATION Reh
-        ON Reh.A_REHAB_REF=Ipra.OUID       
+        ON Reh.A_REHAB_REF = Ipra.OUID       
             and Reh.A_STATUS = 10               --Статус в БД - действует
             AND Reh.A_STATUS_EVENT_IPRA is NULL --Нет статуса мероприятия
             AND Reh.A_RHB_EVNT is NULL          --Не указан подтип мероприятия
