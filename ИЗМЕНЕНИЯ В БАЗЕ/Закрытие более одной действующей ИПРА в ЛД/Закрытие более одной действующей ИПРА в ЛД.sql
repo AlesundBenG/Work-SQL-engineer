@@ -2,15 +2,29 @@
 
 
 --Удаление временных таблиц.
+IF OBJECT_ID('tempdb..#ALL_IPRA_FROM_BASE')             IS NOT NULL BEGIN DROP TABLE #ALL_IPRA_FROM_BASE            END --Информация о всех ИПРА.
 IF OBJECT_ID('tempdb..#PEOPLE_WHO_HAVE_MORE_ONE_IPRA')  IS NOT NULL BEGIN DROP TABLE #PEOPLE_WHO_HAVE_MORE_ONE_IPRA END --Люди, у которых есть более одной действующей ИПРА.
 IF OBJECT_ID('tempdb..#IPRA_FOR_CLOSE')                 IS NOT NULL BEGIN DROP TABLE #IPRA_FOR_CLOSE                END --ИПРА для закрытия.
 IF OBJECT_ID('tempdb..#REHABILITATION_FOR_CLOSE')       IS NOT NULL BEGIN DROP TABLE #REHABILITATION_FOR_CLOSE      END --Мероприятия социальной реабилитации для обработки.
+
 
 
 --------------------------------------------------------------------------------------------------------------------------------
 
 
 --Создание временных таблиц.
+CREATE TABLE #ALL_IPRA_FROM_BASE (
+    IPRA_OUID                   INT,    --Идентификатор ИПРА.
+    DOCUMENT_OUID               INT,    --Идентификатор документа ИПРА.
+    DOCUMENT_STATUS             INT,    --Статус ИПРА.
+    PERSONOUID                  INT,    --Идентификатор личного дела.
+    REHABILITATION_START_DATE   DATE,   --Дата начала ИПРА.
+    REHABILITATION_END_DATE     DATE,   --Дата окончания ИПРА.
+    MSE                         INT,    --Из витрины.
+    FGISFRI                     INT,    --Из ФГИС ФРИ.
+    SOC_SERV_IN_THAT_PERIOD     INT,    --Наличие СО, с которым пересекаются периоды.
+    IPRA_INDEX                  INT,    --Порядковый номер ИПРА, от новых к старым.
+)
 CREATE TABLE #PEOPLE_WHO_HAVE_MORE_ONE_IPRA (
     PERSONOUID INT, --Идентификатор личного дела.
 )
@@ -19,14 +33,55 @@ CREATE TABLE #IPRA_FOR_CLOSE (
     DOCUMENT_OUID   INT,    --Идентификатор документа ИПРА.
     PERSONOUID      INT,    --Идентификатор личного дела.
     START_DATE      DATE,   --Дата начала.
-    END_DATE        DATE,   --Дата окончания.
-    IPRA_INDEX      INT     --Порядковый номер в списке.
+    NEW_END_DATE    DATE,   --Новая дата окончания.
 )
 CREATE TABLE #REHABILITATION_FOR_CLOSE (
     REHABILITATION_OUID INT,    --Идентификатор мероприятия социальной реабилитации.
     IPRA_OUID           INT,    --Идентификатор ИПРА.
     PERSONOUID          INT,    --Идентификатор личного дела.
 )
+
+
+--------------------------------------------------------------------------------------------------------------------------------
+
+
+--Выборка информации о всех ИПРА.
+INSERT INTO #ALL_IPRA_FROM_BASE (IPRA_OUID, DOCUMENT_OUID, DOCUMENT_STATUS, PERSONOUID, REHABILITATION_START_DATE, REHABILITATION_END_DATE, MSE, FGISFRI, SOC_SERV_IN_THAT_PERIOD, IPRA_INDEX)
+SELECT DISTINCT
+    rehabilitation.OUID                         AS IPRA_OUID,
+    actDocuments.OUID                           AS DOCUMENT_OUID,
+    actDocuments.A_DOCSTATUS                    AS DOCUMENT_STATUS,
+    personalCard.OUID                           AS PERSONOUID,
+    CONVERT(DATE, rehabilitation.A_DATE_START)  AS REHABILITATION_START_DATE,
+    CONVERT(DATE, rehabilitation.A_DATE_END)    AS REHABILITATION_END_DATE, 
+    CASE WHEN rehabilitation.A_IDMSE IS NOT NULL THEN 1 ELSE 0 END          AS MSE,
+    CASE WHEN rehabilitation.A_FGISFRI_DOC IS NOT NULL THEN 1 ELSE 0 END    AS FGISFRI,
+    CASE WHEN Serv.OUID IS NOT NULL THEN 1 ELSE 0 END                       AS SOC_SERV_IN_THAT_PERIOD,
+    ROW_NUMBER() OVER (PARTITION BY personalCard.OUID order by rehabilitation.A_DATE_START DESC) AS IPRA_INDEX
+FROM WM_REH_REFERENCE rehabilitation --Реабилитационные мероприятия по заболеванию.
+----Личное дело гражданина.
+    INNER JOIN WM_PERSONAL_CARD personalCard  
+        ON personalCard.OUID = rehabilitation.A_PERSONOUID
+            AND personalCard.A_STATUS = 10    --Статус в БД "Действует".
+            AND personalCard.A_PCSTATUS = 1   --Действующее личное дело.
+----Действующие документы.      
+    INNER JOIN WM_ACTDOCUMENTS actDocuments  
+        ON actDocuments.OUID = rehabilitation.A_IPR
+            AND actDocuments.A_STATUS = 10          --Статус в БД "Действует".
+            AND actDocuments.DOCUMENTSTYPE = 2322   --Индивидуальная программа реабилитации и абилитации.
+---Социальное обслуживание
+	LEFT JOIN (
+        SELECT socServ.OUID,socServ.A_PERSONOUID,SocPer.STARTDATE,SocPer.A_LASTDATE
+        FROM ESRN_SOC_SERV socServ
+            INNER JOIN SPR_SOCSERV_PERIOD SocPer
+                ON SocPer.A_SERV=socServ.OUID
+                    AND SocPer.A_STATUS=10
+        WHERE socServ.A_STATUS=10
+    ) Serv
+        ON Serv.A_PERSONOUID = personalCard.OUID
+		    AND CONVERT(DATE,ISNULL(rehabilitation.A_DATE_START,'1900-01-01')) <= CONVERT(DATE,ISNULL(Serv.A_LASTDATE,'2500-01-01')) 
+		    AND CONVERT(DATE,ISNULL(Serv.STARTDATE,'1900-01-01')) <= CONVERT(DATE,ISNULL(rehabilitation.A_DATE_END,'2500-01-01'))
+WHERE rehabilitation.A_STATUS = 10 --Статус в БД "Действует".
 
 
 ------------------------------------------------------------------------------------------------------------------------------
@@ -38,85 +93,46 @@ SELECT
     w.PERSONOUID AS PERSONOUID
 FROM (
     SELECT DISTINCT
-        COUNT (DISTINCT actDocuments.OUID)  AS COUNT_IPRA,
-        personalCard.OUID                   AS PERSONOUID
-    FROM WM_REH_REFERENCE rehabilitation --Реабилитационные мероприятия по заболеванию.
-    ----Личное дело гражданина.
-        INNER JOIN WM_PERSONAL_CARD personalCard  
-            ON personalCard.OUID = rehabilitation.A_PERSONOUID
-                AND personalCard.A_STATUS = 10    --Статус в БД "Действует".
-                AND personalCard.A_PCSTATUS = 1   --Действующее личное дело.
-    ----Действующие документы.      
-        INNER JOIN WM_ACTDOCUMENTS actDocuments  
-            ON actDocuments.OUID = rehabilitation.A_IPR
-                AND actDocuments.A_STATUS = 10          --Статус в БД "Действует".
-                AND actDocuments.A_DOCSTATUS = 1        --Действующий документ.
-	            AND actDocuments.DOCUMENTSTYPE = 2322   --Индивидуальная программа реабилитации и абилитации.
-    WHERE rehabilitation.A_STATUS = 10 --Статус в БД "Действует".
-        AND (rehabilitation.A_IDMSE IS NOT NULL         --Из витрины.
-            OR rehabilitation.A_FGISFRI_DOC IS NOT NULL --Или из ФГИС ФРИ.
+        COUNT (DISTINCT fromBaseIPRA.DOCUMENT_OUID)    AS COUNT_IPRA,
+        fromBaseIPRA.PERSONOUID                     AS PERSONOUID
+    FROM #ALL_IPRA_FROM_BASE fromBaseIPRA
+    WHERE fromBaseIPRA.DOCUMENT_STATUS = 1  --Действующий документ.
+        AND (fromBaseIPRA.MSE = 1           --Из витрины или...
+            OR fromBaseIPRA.FGISFRI = 1     --...или из ФГИС ФРИ.
         )
-    GROUP BY personalCard.OUID
+    GROUP BY fromBaseIPRA.PERSONOUID
 ) w
-WHERE w.COUNT_IPRA > 1 --Более одной ИПРА.
+WHERE w.COUNT_IPRA > 1 --Более одной действующей ИПРА.
 ;
 
 
 --------------------------------------------------------------------------------------------------------------------------------
 
 
---Оставляем только тех, у кого нет социального обслуживание за любое время, кроме  надомного.
-DELETE FROM #PEOPLE_WHO_HAVE_MORE_ONE_IPRA 
-WHERE PERSONOUID IN (
-    SELECT 
-        socServ.A_PERSONOUID
-    FROM ESRN_SOC_SERV socServ --Назначение социального обслуживания.
-        LEFT JOIN SPR_NPD_MSP_CAT NPD
-            ON NPD.A_ID = socServ.A_SERV
-                AND NPD.A_STATUS = 10
-    WHERE ISNULL(NPD.A_MSP, 806) <> 806
-        AND socServ.A_STATUS = 10
-)
-;
-
-
---------------------------------------------------------------------------------------------------------------------------------
-
-
---Отбор ИПРА.
-INSERT INTO #IPRA_FOR_CLOSE (IPRA_OUID, DOCUMENT_OUID, PERSONOUID, START_DATE, END_DATE, IPRA_INDEX) 
+--Отбор ИПРА для закрытия.
+INSERT INTO #IPRA_FOR_CLOSE (IPRA_OUID, DOCUMENT_OUID, PERSONOUID, START_DATE, NEW_END_DATE)     
 SELECT
-    rehabilitation.OUID                         AS IPRA_OUID,
-    actDocuments.OUID                           AS DOCUMENT_OUID,
-    whoHaveMore.PERSONOUID                      AS PERSONOUID,
-    CONVERT(DATE, rehabilitation.A_DATE_START)  AS START_DATE,
-    CAST(NULL AS DATE)                          AS END_DATE, 
-    ROW_NUMBER() OVER (PARTITION BY whoHaveMore.PERSONOUID order by rehabilitation.A_DATE_START DESC) AS IPRA_INDEX
-FROM WM_REH_REFERENCE rehabilitation --Реабилитационные мероприятия по заболеванию.
+    fromBaseIPRA.IPRA_OUID                  AS IPRA_OUID,
+    fromBaseIPRA.DOCUMENT_OUID              AS DOCUMENT_OUID,
+    fromBaseIPRA.PERSONOUID                 AS PERSONOUID,
+    fromBaseIPRA.REHABILITATION_START_DATE  AS START_DATE,
+    (SELECT DATEADD(DAY, -1, REHABILITATION_START_DATE) 
+        FROM #ALL_IPRA_FROM_BASE before 
+        WHERE before.IPRA_INDEX = fromBaseIPRA.IPRA_INDEX - 1 
+            AND before.PERSONOUID = fromBaseIPRA.PERSONOUID
+    ) AS NEW_END_DATE
+FROM #ALL_IPRA_FROM_BASE fromBaseIPRA
 ----Люди, которые имеют более одной ИПРа.
     INNER JOIN #PEOPLE_WHO_HAVE_MORE_ONE_IPRA whoHaveMore  
-        ON whoHaveMore.PERSONOUID = rehabilitation.A_PERSONOUID
-----Действующие документы.      
-    INNER JOIN WM_ACTDOCUMENTS actDocuments  
-        ON actDocuments.OUID = rehabilitation.A_IPR
-            AND actDocuments.A_STATUS = 10          --Статус в БД "Действует".
-            AND actDocuments.A_DOCSTATUS = 1        --Действующий документ.
-            AND actDocuments.DOCUMENTSTYPE = 2322   --Индивидуальная программа реабилитации и абилитации.
-WHERE rehabilitation.A_STATUS = 10 --Статус в БД "Действует".
-    AND (rehabilitation.A_IDMSE IS NOT NULL         --Из витрины.
-        OR rehabilitation.A_FGISFRI_DOC IS NOT NULL --Или из ФГИС ФРИ.
+        ON whoHaveMore.PERSONOUID = fromBaseIPRA.PERSONOUID
+WHERE fromBaseIPRA.DOCUMENT_STATUS = 1              --Действующий документ.
+    AND fromBaseIPRA.SOC_SERV_IN_THAT_PERIOD = 0    --Нет пересекающихся СО.
+    AND fromBaseIPRA.IPRA_INDEX <> 1                --Не последняя ИПРА.
+    AND (fromBaseIPRA.MSE = 1                       --Из витрины или...
+        OR fromBaseIPRA.FGISFRI = 1                 --...или из ФГИС ФРИ.
     )
-
---Утановка даты окончания не последних ИПРА, которая равная дате с вычитом одного дня от начала ИПРА идущей после данной.
-UPDATE forClose
-SET forClose.END_DATE = (SELECT DATEADD(DAY, -1, START_DATE) FROM #IPRA_FOR_CLOSE before WHERE before.IPRA_INDEX = forClose.IPRA_INDEX - 1 AND before.PERSONOUID = forClose.PERSONOUID)
-FROM #IPRA_FOR_CLOSE forClose
-
---Оставляем те, которые будем закрывать.
-DELETE FROM #IPRA_FOR_CLOSE
-WHERE END_DATE IS NULL
-
-
+  
+    
 --------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -163,15 +179,15 @@ WHERE Ipra.A_STATUS = 10 ---ИПРА не удалена из БД
     AND Ipra.OUID IN (SELECT IPRA_OUID FROM #IPRA_FOR_CLOSE) --Вставляем в те, которые собираемся закрывать.
     AND Reh2.A_OUID IS NULL --Мероприятие, которое мы хотим добавить, отсутствует.
 
+
 --------------------------------------------------------------------------------------------------------------------------------
 
 
 --Мероприятия социальной реабилитации для обработки.
-INSERT INTO #REHABILITATION_FOR_CLOSE (REHABILITATION_OUID, IPRA_OUID, PERSONOUID)
+INSERT INTO #REHABILITATION_FOR_CLOSE (REHABILITATION_OUID, IPRA_OUID)
 SELECT 
     rehabilitation.A_OUID   AS REHABILITATION_OUID,
-    forClose.IPRA_OUID      AS IPRA_OUID,
-    forClose.PERSONOUID     AS PERSONOUID
+    forClose.IPRA_OUID      AS IPRA_OUID
 FROM WM_SOCIAL_REHABILITATION rehabilitation --Мероприятие социальной реабилитации.
 ----ИПРА для закрытия.
     INNER JOIN #IPRA_FOR_CLOSE forClose 
@@ -200,7 +216,7 @@ FROM WM_SOCIAL_REHABILITATION rehabilitation
 --Закрытие ИПРА.
 UPDATE actDocuments
 SET actDocuments.A_DOCSTATUS = 5,
-    actDocuments.COMPLETIONSACTIONDATE = forClose.END_DATE, 
+    actDocuments.COMPLETIONSACTIONDATE = forClose.NEW_END_DATE, 
     actDocuments.TS = GETDATE(), 
     --actDocuments.A_EDITOWNER = #curAccount#
     actDocuments.A_EDITOWNER = 10314303
@@ -215,7 +231,7 @@ WHERE actDocuments.OUID IN (
         INNER JOIN #IPRA_FOR_CLOSE forClose 
             ON rehabilitation.A_REHAB_REF = forClose.IPRA_OUID
     WHERE rehabilitation.A_STATUS = 10 --Статус в БД "Действует".
-    GROUP BY forClose.PERSONOUID, forClose.IPRA_OUID, forClose.DOCUMENT_OUID, forClose.START_DATE, forClose.END_DATE
+    GROUP BY forClose.PERSONOUID, forClose.IPRA_OUID, forClose.DOCUMENT_OUID, forClose.START_DATE, forClose.NEW_END_DATE
     HAVING MAX(CASE WHEN rehabilitation.A_STATUS_EVENT_IPRA = 1 THEN 1 ELSE 0 END) = 1          --Есть сформированные мероприятия.
         OR COUNT(*) = SUM(CASE WHEN ISNULL(rehabilitation.A_STATUS_EVENT_IPRA, 4) = 4 THEN 1 ELSE 0 END)   --Либо все выгружены в витрину.
         OR COUNT(*) = SUM(CASE WHEN ISNULL(rehabilitation.A_STATUS_EVENT_IPRA, 3) = 3 THEN 1 ELSE 0 END)   --Либо все на выгрузку в витрину.
@@ -244,7 +260,7 @@ WHERE actDocuments.OUID IN (
         INNER JOIN #IPRA_FOR_CLOSE forClose 
             ON rehabilitation.A_REHAB_REF = forClose.IPRA_OUID
     WHERE rehabilitation.A_STATUS = 10 --Статус в БД "Действует".
-    GROUP BY forClose.PERSONOUID, forClose.IPRA_OUID, forClose.DOCUMENT_OUID, forClose.START_DATE, forClose.END_DATE
+    GROUP BY forClose.PERSONOUID, forClose.IPRA_OUID, forClose.DOCUMENT_OUID, forClose.START_DATE, forClose.NEW_END_DATE
     HAVING MAX(CASE WHEN rehabilitation.A_STATUS_EVENT_IPRA = 1 THEN 1 ELSE 0 END) = 1          --Есть сформированные мероприятия.
         OR COUNT(*) = SUM(CASE WHEN ISNULL(rehabilitation.A_STATUS_EVENT_IPRA, 4) = 4 THEN 1 ELSE 0 END)   --Либо все выгружены в витрину.
         OR COUNT(*) = SUM(CASE WHEN ISNULL(rehabilitation.A_STATUS_EVENT_IPRA, 3) = 3 THEN 1 ELSE 0 END)   --Либо все на выгрузку в витрину.
@@ -277,7 +293,7 @@ WHERE actDocuments.OUID IN (
         INNER JOIN #IPRA_FOR_CLOSE forClose 
             ON rehabilitation.A_REHAB_REF = forClose.IPRA_OUID
     WHERE rehabilitation.A_STATUS = 10 --Статус в БД "Действует".
-    GROUP BY forClose.PERSONOUID, forClose.IPRA_OUID, forClose.DOCUMENT_OUID, forClose.START_DATE, forClose.END_DATE
+    GROUP BY forClose.PERSONOUID, forClose.IPRA_OUID, forClose.DOCUMENT_OUID, forClose.START_DATE, forClose.NEW_END_DATE
     HAVING MAX(CASE WHEN rehabilitation.A_STATUS_EVENT_IPRA = 1 THEN 1 ELSE 0 END) = 1                      --Есть сформированные мероприятия.
         OR COUNT(*) = SUM(CASE WHEN ISNULL(rehabilitation.A_STATUS_EVENT_IPRA, 4) = 4 THEN 1 ELSE 0 END)   --Либо все выгружены в витрину.
         OR COUNT(*) = SUM(CASE WHEN ISNULL(rehabilitation.A_STATUS_EVENT_IPRA, 3) = 3 THEN 1 ELSE 0 END)   --Либо все на выгрузку в витрину.
